@@ -1,4 +1,5 @@
 import { GoogleGenAI, Type } from "@google/genai";
+import type { QuestionItem, Assessment, AnalyzeFileResult, GenerationConfig, GeminiError } from './types'
 
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY || "" });
 
@@ -6,8 +7,8 @@ export const IGCSE_SUBJECTS = ["Mathematics", "Biology", "Physics", "Chemistry"]
 
 export const IGCSE_TOPICS: Record<string, string[]> = {
   "Mathematics": [
-    "Number", "Algebra", "Functions", "Geometry", "Trigonometry", 
-    "Vectors & Transformations", "Mensuration", "Coordinate Geometry", 
+    "Number", "Algebra", "Functions", "Geometry", "Trigonometry",
+    "Vectors & Transformations", "Mensuration", "Coordinate Geometry",
     "Statistics", "Probability", "Mixed Topics"
   ],
   "Biology": [
@@ -18,7 +19,7 @@ export const IGCSE_TOPICS: Record<string, string[]> = {
     "Variation & Selection", "Organisms & Environment", "Biotechnology", "Mixed Topics"
   ],
   "Physics": [
-    "Motion, Forces & Energy", "Thermal Physics", "Waves", 
+    "Motion, Forces & Energy", "Thermal Physics", "Waves",
     "Electricity & Magnetism", "Nuclear Physics", "Space Physics", "Mixed Topics"
   ],
   "Chemistry": [
@@ -42,30 +43,7 @@ export const CAMBRIDGE_COMMAND_WORDS = {
   "Calculate": "Work out from given facts, figures or information."
 };
 
-export interface TestRequest {
-  subject: string;
-  topic: string;
-  difficulty: string;
-  count: number;
-  type: string;
-  calculator: boolean;
-  model: string;
-  syllabusContext?: string;
-  references?: { data: string; mimeType: string }[];
-}
-
-export interface TestResponse {
-  questions: string;
-  answerKey: string;
-  markScheme: string;
-}
-
 // ---- Error handling ----
-export interface GeminiError {
-  type: 'rate_limit' | 'model_overloaded' | 'invalid_response' | 'network' | 'unknown'
-  retryable: boolean
-  message: string
-}
 
 async function withRetry<T>(
   fn: () => Promise<T>,
@@ -100,36 +78,28 @@ async function withRetry<T>(
 }
 // -------------------------
 
-export async function generateTest(config: TestRequest, onRetry?: (attempt: number) => void): Promise<TestResponse> {
-  const prompt = `Generate a Cambridge IGCSE ${config.subject} test based on these requirements:
+export async function generateTest(
+  config: GenerationConfig & { references?: { data: string; mimeType: string }[] },
+  onRetry?: (attempt: number) => void
+): Promise<QuestionItem[]> {
+  const prompt = `Generate a Cambridge IGCSE ${config.subject} assessment.
 Topic: ${config.topic}
 Difficulty: ${config.difficulty}
 Number of Questions: ${config.count}
 Question Type: ${config.type}
 Calculator: ${config.calculator ? "Allowed" : "Not Allowed"}
-${config.syllabusContext ? `Syllabus Context/Objectives: ${config.syllabusContext}` : ""}
+${config.syllabusContext ? `Syllabus Context: ${config.syllabusContext}` : ""}
 
-Follow these rules strictly:
-1. You MUST generate EXACTLY ${config.count} questions. Do not generate more or less.
-2. All questions must follow Cambridge IGCSE ${config.subject} standards, style, and difficulty level.
-2. For Science subjects (Biology, Physics, Chemistry), ensure questions cover experimental skills and theoretical knowledge.
-3. **DIAGRAMS**: When a diagram is needed (especially for Biology cells, organs, or Physics circuits), provide the diagram as an **inline SVG code block** (using \`\`\`svg ... \`\`\`) within the markdown. 
-    - **CRITICAL**: Use **camelCase** for all SVG attributes (e.g., use \`strokeWidth\` instead of \`stroke-width\`, \`fontSize\` instead of \`font-size\`, \`fontFamily\` instead of \`font-family\`).
-    - Ensure the SVG is clean, labeled with letters (A, B, C, etc.) as per IGCSE style, and fits well within a document.
-4. Format the output as a JSON object with three fields: "questions", "answerKey", and "markScheme".
-5. Use LaTeX for mathematical notation and chemical formulas (e.g., $H_2O$, $x^2$, $\Delta H$).
-6. "questions" should be a markdown string for SECTION 1.
-7. "answerKey" should be a markdown string for SECTION 2. **DO NOT LEAVE THIS EMPTY.**
-8. "markScheme" should be a markdown string for SECTION 3 (step-by-step with marks allocation). **DO NOT LEAVE THIS EMPTY.**
-9. Do not include any text outside the JSON object.
-10. If reference documents (Syllabus or Past Papers) are provided, use them as the primary source for style, depth, and specific learning objectives.
-11. **FORMATTING**: 
-    - The main question text must be **bold**.
-    - Each answer option (A, B, C, D) must be on a new line. **CRITICAL**: Use double newlines between the question and options, and between each option, to ensure they are rendered as separate lines in Markdown.
-    - The "Syllabus Reference:" label and its code must be **bold** and on a new line at the end of the question (use double newlines before it).`;
+Rules:
+1. Generate EXACTLY ${config.count} questions.
+2. Each question must have: text (markdown, bold), answer, markScheme, marks (integer), commandWord, type (mcq/short_answer/structured), hasDiagram (boolean).
+3. For diagrams, include SVG inside the 'text' field as \`\`\`svg ... \`\`\` using camelCase attributes.
+4. Use LaTeX for math ($H_2O$, $x^2$).
+5. For MCQ: put options A/B/C/D each on new line with double newlines between them.
+6. Add **Syllabus Reference:** at end of each question text.`
 
-  const parts: any[] = [];
-  
+  const parts: any[] = []
+
   if (config.references && config.references.length > 0) {
     config.references.forEach(ref => {
       parts.push({
@@ -137,11 +107,11 @@ Follow these rules strictly:
           mimeType: ref.mimeType,
           data: ref.data.split(",")[1] || ref.data,
         },
-      });
-    });
+      })
+    })
   }
-  
-  parts.push({ text: prompt });
+
+  parts.push({ text: prompt })
 
   const response = await withRetry(() => ai.models.generateContent({
     model: config.model || "gemini-3-flash-preview",
@@ -152,15 +122,27 @@ Follow these rules strictly:
       responseSchema: {
         type: Type.OBJECT,
         properties: {
-          questions: { type: Type.STRING },
-          answerKey: { type: Type.STRING },
-          markScheme: { type: Type.STRING },
+          questions: {
+            type: Type.ARRAY,
+            items: {
+              type: Type.OBJECT,
+              properties: {
+                text: { type: Type.STRING },
+                answer: { type: Type.STRING },
+                markScheme: { type: Type.STRING },
+                marks: { type: Type.NUMBER },
+                commandWord: { type: Type.STRING },
+                type: { type: Type.STRING },
+                hasDiagram: { type: Type.BOOLEAN },
+              },
+              required: ['text', 'answer', 'markScheme', 'marks', 'commandWord', 'type', 'hasDiagram'],
+            },
+          },
         },
-        required: ["questions", "answerKey", "markScheme"],
+        required: ['questions'],
       },
       systemInstruction: `You are an expert Cambridge IGCSE Assessment Designer for ${config.subject}.
 Your goal is to create high-quality, syllabus-aligned assessments.
-You MUST provide the questions, the answer key, and a detailed mark scheme.
 
 **Cambridge Command Words Usage**:
 - **Describe**: State the points of a topic / give characteristics and main features.
@@ -171,48 +153,40 @@ You MUST provide the questions, the answer key, and a detailed mark scheme.
 
 When generating SVG diagrams:
 - Use a clean, professional "exam paper" style (black lines on white/transparent background).
-- Ensure all labels (A, B, C, etc.) are clearly placed with leader lines if necessary.
-- Use a consistent font (Arial/Helvetica) for text within SVGs.
-- **CRITICAL**: Use **camelCase** for all SVG attributes (e.g., \`strokeWidth\`, \`fontSize\`, \`fontFamily\`, \`textAnchor\`, \`dominantBaseline\`).
-- Keep the SVG responsive and centered.
-- For Science, ensure diagrams are technically accurate (e.g., correct circuit symbols, accurate cell organelles).
-- **Formatting**:
-    - Make the question text **bold**.
-    - Always put each answer option (A, B, C, D) on its own line. **IMPORTANT**: Use double newlines between each option to prevent them from merging into one line.
-    - Place **Syllabus Reference:** on a new line at the bottom (using double newlines) and make it **bold**.`,
+- **CRITICAL**: Use **camelCase** for all SVG attributes (e.g., \`strokeWidth\`, \`fontSize\`, \`fontFamily\`, \`textAnchor\`, \`dominantBaseline\`).`,
     },
-  }), 3, onRetry);
+  }), 3, onRetry)
 
-  return safeJsonParse(response.text || "{}");
+  const raw = safeJsonParse(response.text || '{}') as { questions: Omit<QuestionItem, 'id'>[] }
+  return (raw.questions ?? []).map(q => ({ ...q, id: crypto.randomUUID() }))
 }
 
-export async function auditTest(subject: string, test: TestResponse, model: string = "gemini-3.1-pro-preview"): Promise<TestResponse> {
-  const prompt = `You are a Senior Cambridge IGCSE Examiner and Auditor for ${subject}. 
+export async function auditTest(
+  subject: string,
+  assessment: Assessment,
+  model: string = 'gemini-3.1-pro-preview'
+): Promise<QuestionItem[]> {
+  const questionsText = assessment.questions
+    .map((q, i) => `**Q${i + 1}** [${q.marks} marks] (${q.commandWord})\n${q.text}\n\nAnswer: ${q.answer}\n\nMark Scheme: ${q.markScheme}`)
+    .join('\n\n---\n\n')
+
+  const prompt = `You are a Senior Cambridge IGCSE Examiner and Auditor for ${subject}.
 Your task is to review the following assessment and ensure it meets the highest standards of accuracy, pedagogical precision, and formatting.
 
 ASSESSMENT TO REVIEW:
 ---
-QUESTIONS:
-${test.questions}
-
-ANSWER KEY:
-${test.answerKey}
-
-MARK SCHEME:
-${test.markScheme}
+${questionsText}
 ---
 
 AUDIT CRITERIA:
 1. **Command Words**: Ensure words like "Describe", "Explain", "Suggest" are used correctly according to IGCSE definitions.
-2. **Mark Allocation**: Ensure the mark scheme points match the cognitive demand of the question (e.g., a 4-mark "Explain" question must have 4 clear marking points).
+2. **Mark Allocation**: Ensure the mark scheme points match the cognitive demand of the question.
 3. **Accuracy**: Check for any scientific or mathematical errors.
-4. **Formatting**: Ensure bold question text, double newlines for options, and bold Syllabus References.
-5. **SVG Diagrams**: Ensure SVG diagrams are technically correct and use camelCase attributes.
+4. **Formatting**: Ensure bold question text, double newlines for MCQ options, and bold Syllabus References.
+5. **SVG Diagrams**: Ensure SVG diagrams use camelCase attributes.
 
-If you find errors, fix them and return the ENTIRE corrected assessment in the same JSON format.
-If the assessment is perfect, return it as is.
-
-Format the output as a JSON object with three fields: "questions", "answerKey", and "markScheme".`;
+If you find errors, fix them and return the ENTIRE corrected assessment.
+If the assessment is perfect, return it as is.`
 
   const response = await withRetry(() => ai.models.generateContent({
     model: model,
@@ -222,39 +196,60 @@ Format the output as a JSON object with three fields: "questions", "answerKey", 
       responseSchema: {
         type: Type.OBJECT,
         properties: {
-          questions: { type: Type.STRING },
-          answerKey: { type: Type.STRING },
-          markScheme: { type: Type.STRING },
+          questions: {
+            type: Type.ARRAY,
+            items: {
+              type: Type.OBJECT,
+              properties: {
+                text: { type: Type.STRING },
+                answer: { type: Type.STRING },
+                markScheme: { type: Type.STRING },
+                marks: { type: Type.NUMBER },
+                commandWord: { type: Type.STRING },
+                type: { type: Type.STRING },
+                hasDiagram: { type: Type.BOOLEAN },
+              },
+              required: ['text', 'answer', 'markScheme', 'marks', 'commandWord', 'type', 'hasDiagram'],
+            },
+          },
         },
-        required: ["questions", "answerKey", "markScheme"],
+        required: ['questions'],
       },
     },
-  }));
+  }))
 
-  return JSON.parse(response.text || "{}");
+  const raw = JSON.parse(response.text || '{}') as { questions: Omit<QuestionItem, 'id'>[] }
+  return (raw.questions ?? []).map((q, i) => ({
+    ...q,
+    id: assessment.questions[i]?.id ?? crypto.randomUUID(),
+  }))
 }
 
 export async function getStudentFeedback(
   subject: string,
-  test: TestResponse,
-  studentAnswers: string,
-  modelName: string = "gemini-3-flash-preview"
+  assessment: Assessment,
+  studentAnswers: string[],
+  modelName: string = 'gemini-3-flash-preview'
 ): Promise<string> {
+  const questionsText = assessment.questions
+    .map((q, i) => `**Q${i + 1}** [${q.marks} marks]\n${q.text}\n\nMark Scheme: ${q.markScheme}`)
+    .join('\n\n')
+  const answersText = studentAnswers
+    .map((a, i) => `Q${i + 1}: ${a || '(no answer)'}`)
+    .join('\n')
+
   const prompt = `
     You are an expert Cambridge IGCSE Examiner for ${subject}.
-    
+
     TASK:
     Evaluate the student's answers based on the provided questions and mark scheme.
-    
-    QUESTIONS:
-    ${test.questions}
-    
-    MARK SCHEME:
-    ${test.markScheme}
-    
+
+    QUESTIONS AND MARK SCHEMES:
+    ${questionsText}
+
     STUDENT ANSWERS:
-    ${studentAnswers}
-    
+    ${answersText}
+
     INSTRUCTIONS:
     1. Be strict but fair, following the Cambridge assessment objectives.
     2. For each question, indicate if it's correct, partially correct, or incorrect.
@@ -262,7 +257,7 @@ export async function getStudentFeedback(
     4. Give an estimated mark for each section.
     5. Summarize the student's performance and provide 3 key areas for improvement.
     6. Use Markdown for formatting.
-  `;
+  `
 
   const response = await withRetry(() => ai.models.generateContent({
     model: modelName,
@@ -270,28 +265,28 @@ export async function getStudentFeedback(
     config: {
       systemInstruction: "You are a professional Cambridge IGCSE examiner. Provide constructive, precise feedback based on official mark schemes.",
     },
-  }));
+  }))
 
-  return response.text || "Could not generate feedback.";
+  return response.text || "Could not generate feedback."
 }
 
 function safeJsonParse(text: string) {
   if (!text) return {};
-  
+
   let cleaned = text.trim();
-  
+
   // Remove markdown code blocks if present
   if (cleaned.startsWith("```")) {
     cleaned = cleaned.replace(/^```(?:json)?\n?/, "").replace(/\n?```$/, "");
   }
-  
+
   try {
     return JSON.parse(cleaned);
   } catch (e) {
     // Attempt to find the first '{' and last '}'
     const start = cleaned.indexOf('{');
     const end = cleaned.lastIndexOf('}');
-    
+
     if (start !== -1 && end !== -1 && end > start) {
       try {
         return JSON.parse(cleaned.substring(start, end + 1));
@@ -307,31 +302,23 @@ function safeJsonParse(text: string) {
 }
 
 export async function analyzeFile(
-  base64Data: string, 
-  mimeType: string, 
+  base64Data: string,
+  mimeType: string,
   subject: string,
   count: number = 3,
-  model: string = "gemini-3-flash-preview",
+  model: string = 'gemini-3-flash-preview',
   references?: { data: string; mimeType: string }[]
-): Promise<{ analysis: string; similarQuestions: string; answerKey: string; markScheme: string }> {
-  const isPdf = mimeType === "application/pdf";
+): Promise<AnalyzeFileResult> {
+  const isPdf = mimeType === "application/pdf"
   const prompt = `Analyze this ${isPdf ? "past paper PDF" : "screenshot"} of a Cambridge IGCSE ${subject} question.
 1. Explain the topic and learning objectives it covers.
-2. Generate EXACTLY ${count} similar questions with the same concept but different context. Do not generate more or less.
-3. For Science subjects, include SVG diagrams if appropriate for the similar questions. Use \`\`\`svg ... \`\`\` code blocks and **camelCase** attributes.
-4. If Syllabus reference documents are provided, ensure the analysis and new questions align strictly with the syllabus learning objectives.
-5. **FORMATTING**: 
-    - The question text must be **bold**.
-    - Each answer option (A, B, C, D) must be on a new line. **IMPORTANT**: Use double newlines between each option to ensure they render correctly on separate lines.
-    - Place **Syllabus Reference:** on a new line at the bottom (using double newlines) and make it **bold**.
-Format the output as a JSON object with four fields: 
-- "analysis" (markdown string explaining topic and objectives)
-- "similarQuestions" (markdown string for the new questions)
-- "answerKey" (markdown string for the answers to the new questions). **DO NOT LEAVE THIS EMPTY.**
-- "markScheme" (markdown string for the step-by-step mark scheme for the new questions). **DO NOT LEAVE THIS EMPTY.**`;
+2. Generate EXACTLY ${count} similar questions with the same concept but different context.
+3. For Science subjects, include SVG diagrams if appropriate. Use \`\`\`svg ... \`\`\` code blocks and **camelCase** attributes.
+4. Each question must have: text, answer, markScheme, marks, commandWord, type (mcq/short_answer/structured), hasDiagram.
+5. **FORMATTING**: Bold question text, double newlines for MCQ options, bold Syllabus Reference at end.`
 
-  const parts: any[] = [];
-  
+  const parts: any[] = []
+
   if (references && references.length > 0) {
     references.forEach(ref => {
       parts.push({
@@ -339,8 +326,8 @@ Format the output as a JSON object with four fields:
           mimeType: ref.mimeType,
           data: ref.data.split(",")[1] || ref.data,
         },
-      });
-    });
+      })
+    })
   }
 
   parts.push({
@@ -348,36 +335,48 @@ Format the output as a JSON object with four fields:
       mimeType: mimeType,
       data: base64Data.split(",")[1] || base64Data,
     },
-  });
-  
-  parts.push({ text: prompt });
+  })
+
+  parts.push({ text: prompt })
 
   const response = await withRetry(() => ai.models.generateContent({
     model: model,
     contents: { parts },
     config: {
       responseMimeType: "application/json",
-      maxOutputTokens: 8192, // Increased to handle large SVG-heavy responses
+      maxOutputTokens: 8192,
       responseSchema: {
         type: Type.OBJECT,
         properties: {
           analysis: { type: Type.STRING },
-          similarQuestions: { type: Type.STRING },
-          answerKey: { type: Type.STRING },
-          markScheme: { type: Type.STRING },
+          questions: {
+            type: Type.ARRAY,
+            items: {
+              type: Type.OBJECT,
+              properties: {
+                text: { type: Type.STRING },
+                answer: { type: Type.STRING },
+                markScheme: { type: Type.STRING },
+                marks: { type: Type.NUMBER },
+                commandWord: { type: Type.STRING },
+                type: { type: Type.STRING },
+                hasDiagram: { type: Type.BOOLEAN },
+              },
+              required: ['text', 'answer', 'markScheme', 'marks', 'commandWord', 'type', 'hasDiagram'],
+            },
+          },
         },
-        required: ["analysis", "similarQuestions", "answerKey", "markScheme"],
+        required: ['analysis', 'questions'],
       },
       systemInstruction: `You are an expert Cambridge IGCSE ${subject} assessment designer.
-Analyze past paper questions with high precision and generate similar questions that maintain the exact same cognitive demand and style.
-Use SVG for any diagrams in the similar questions to ensure they look like official exam papers. Use **camelCase** for SVG attributes.
-**Formatting**:
-    - Question text must be **bold**.
-    - Each answer option (A, B, C, D) must be on a new line. **IMPORTANT**: Use double newlines between each option.
-    - Place **Syllabus Reference:** on a new line at the bottom (using double newlines) and make it **bold**.
-You MUST provide the analysis, similar questions, answer key, and mark scheme.`,
+Analyze past paper questions with high precision and generate similar questions.
+Use SVG for any diagrams using **camelCase** attributes.`,
     },
-  }));
+  }))
 
-  return safeJsonParse(response.text || "{}");
+  const raw = safeJsonParse(response.text || '{}')
+  return {
+    analysis: raw.analysis ?? '',
+    questions: (raw.questions ?? []).map((q: any) => ({ ...q, id: crypto.randomUUID() })),
+  }
 }
