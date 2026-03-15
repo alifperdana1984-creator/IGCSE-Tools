@@ -77,7 +77,7 @@ service cloud.firestore {
     }
 
     function isValidQuestion(data) {
-      return hasOnlyAllowedFields(['subject', 'topic', 'difficulty', 'text', 'answer', 'markScheme', 'marks', 'commandWord', 'type', 'hasDiagram', 'userId', 'createdAt', 'assessmentId', 'folderId']) &&
+      return hasOnlyAllowedFields(['subject', 'topic', 'difficulty', 'text', 'answer', 'markScheme', 'marks', 'commandWord', 'type', 'hasDiagram', 'code', 'userId', 'createdAt', 'assessmentId', 'folderId']) &&
              data.subject is string && data.subject.size() > 0 &&
              data.topic is string && data.topic.size() > 0 &&
              data.text is string && data.text.size() > 0 && data.text.size() < 10000 &&
