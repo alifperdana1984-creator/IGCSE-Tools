@@ -4,7 +4,7 @@ import remarkMath from 'remark-math'
 import remarkGfm from 'remark-gfm'
 import rehypeKatex from 'rehype-katex'
 import rehypeRaw from 'rehype-raw'
-import { Download, Copy, Save, Edit3 } from 'lucide-react'
+import { Download, Copy, Save, Edit3, BookmarkPlus } from 'lucide-react'
 import type { Assessment } from '../../lib/types'
 import { copyToClipboard } from '../../lib/clipboard'
 import { parseSVGSafe } from '../../lib/svg'
@@ -18,6 +18,7 @@ interface Props {
   onEdit: () => void
   onCancelEdit: () => void
   onSave: () => void
+  onSaveToLibrary: () => void
   onStudentFeedback?: (answers: string[]) => Promise<string | null | undefined>
   onCopy: (text: string) => void
   activeTab: 'questions' | 'answerKey' | 'markScheme'
@@ -48,7 +49,7 @@ function QuestionMarkdown({ content }: { content: string }) {
 
 export function AssessmentView({
   assessment, analysisText, isEditing, studentMode,
-  onEdit, onCancelEdit, onSave, onStudentFeedback, onCopy,
+  onEdit, onCancelEdit, onSave, onSaveToLibrary, onStudentFeedback, onCopy,
   activeTab, onTabChange,
 }: Props) {
   const contentRef = useRef<HTMLDivElement>(null)
@@ -104,6 +105,9 @@ export function AssessmentView({
           ))}
         </div>
         <div className="flex gap-1.5">
+          <button onClick={onSaveToLibrary} className="px-3 py-1.5 text-xs bg-emerald-600 text-white rounded-lg font-medium flex items-center gap-1 hover:bg-emerald-700" title="Save to Library">
+            <BookmarkPlus className="w-3.5 h-3.5" /> Save
+          </button>
           <button onClick={() => onCopy(currentText)} className="p-1.5 text-stone-500 hover:bg-stone-100 rounded" title="Copy">
             <Copy className="w-4 h-4" />
           </button>

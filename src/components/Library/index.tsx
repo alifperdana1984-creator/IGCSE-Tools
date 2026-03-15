@@ -280,7 +280,11 @@ export function Library({
                     {/* Content */}
                     <div className="flex-1 min-w-0">
                       <div className="text-xs text-stone-700 truncate">
-                        {q.text.replace(/```svg[\s\S]*?```/g, '[diagram]').replace(/\*\*/g, '').substring(0, 120)}...
+                        {q.text
+                        .replace(/```svg[\s\S]*?```/g, '[diagram]')
+                        .replace(/<svg[\s\S]*?<\/svg>/gi, '[diagram]')
+                        .replace(/\*\*/g, '')
+                        .substring(0, 120)}...
                       </div>
                       <div className="text-xs text-stone-400 mt-0.5">{q.subject} · {q.marks}m · {q.commandWord}</div>
                     </div>

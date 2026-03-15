@@ -186,6 +186,7 @@ export default function App() {
             studentMode={studentMode}
             onEdit={() => setIsEditing(true)}
             onCancelEdit={() => setIsEditing(false)}
+            onSaveToLibrary={handleSave}
             onSave={handleSave}
             onStudentFeedback={(answers) => generation.getStudentFeedback(answers, config.model)}
             onCopy={handleCopy}
