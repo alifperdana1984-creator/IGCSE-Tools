@@ -1800,11 +1800,12 @@ export default function App() {
                               // Clean up the SVG content if it's wrapped in extra tags or has newlines that break dangerouslySetInnerHTML
                               const svgMatch = content.match(/<svg[\s\S]*<\/svg>/);
                               const svgContent = svgMatch ? svgMatch[0] : content;
-                              
+                              const cleanSvg = svgContent.replace(/\\"/g, '"').replace(/\n/g, " ");
+
                               return (
-                                <div 
+                                <div
                                   className="my-6 flex justify-center bg-stone-50 p-6 rounded-xl border border-stone-100 overflow-x-auto"
-                                  dangerouslySetInnerHTML={{ __html: svgContent.replace(/\n/g, " ") }} 
+                                  dangerouslySetInnerHTML={{ __html: cleanSvg }}
                                 />
                               );
                             }
@@ -1927,11 +1928,12 @@ export default function App() {
                               if (!inline && (isSvg || content.includes("<svg"))) {
                                 const svgMatch = content.match(/<svg[\s\S]*<\/svg>/);
                                 const svgContent = svgMatch ? svgMatch[0] : content;
-                                
+                                const cleanSvg = svgContent.replace(/\\"/g, '"').replace(/\n/g, " ");
+
                                 return (
-                                  <div 
+                                  <div
                                     className="my-6 flex justify-center bg-stone-50 p-6 rounded-xl border border-stone-100 overflow-x-auto"
-                                    dangerouslySetInnerHTML={{ __html: svgContent.replace(/\n/g, " ") }} 
+                                    dangerouslySetInnerHTML={{ __html: cleanSvg }}
                                   />
                                 );
                               }
