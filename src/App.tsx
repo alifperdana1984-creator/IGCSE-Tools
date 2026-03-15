@@ -87,6 +87,14 @@ function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
 }
 
+function normalizeMarkdown(content: string): string {
+  return content.replace(/\\n/g, '\n');
+}
+
+function getPreviewContent(content: string): string {
+  return normalizeMarkdown(content).replace(/```svg[\s\S]*?```/g, '*(diagram)*');
+}
+
 export default function App() {
   const [subject, setSubject] = useState("Mathematics");
   const [topic, setTopic] = useState("Mixed Topics");
@@ -380,7 +388,6 @@ export default function App() {
     }
   };
 
-  const [migrationStatus, setMigrationStatus] = useState<string | null>(null);
   const [notification, setNotification] = useState<{ message: string, type: 'success' | 'error' | 'info' } | null>(null);
 
   const showNotification = (message: string, type: 'success' | 'error' | 'info' = 'info') => {
@@ -388,61 +395,6 @@ export default function App() {
     setTimeout(() => setNotification(null), 5000);
   };
 
-  const migrateData = async () => {
-    if (!user) return;
-    
-    setLoading(true);
-    setMigrationStatus("Starting migration...");
-    let migratedCount = 0;
-    try {
-      // Fetch ALL assessments and questions for migration to ensure global coverage
-      const allAssessments = await getSavedAssessments();
-      const allQuestions = await getQuestions();
-      
-      if (allAssessments.length === 0) {
-        setMigrationStatus("No assessments found to migrate.");
-        setTimeout(() => setMigrationStatus(null), 3000);
-        return;
-      }
-
-      for (const assessment of allAssessments) {
-        // Check if this assessment already has questions saved
-        const existingQuestions = allQuestions.filter(q => q.assessmentId === assessment.id);
-        if (existingQuestions.length > 0) continue;
-
-        const parsed = parseAssessmentIntoQuestions(assessment.questions, assessment.answerKey, assessment.markScheme);
-        if (parsed.length === 0) {
-          console.warn(`Could not parse questions for assessment: ${assessment.topic}`);
-          continue;
-        }
-
-        await Promise.all(parsed.map(q => 
-          saveQuestion({
-            subject: assessment.subject,
-            topic: assessment.topic,
-            difficulty: assessment.difficulty,
-            content: q.content,
-            answer: q.answer,
-            markScheme: q.markScheme,
-            assessmentId: assessment.id,
-            folderId: assessment.folderId
-          })
-        ));
-        migratedCount += parsed.length;
-        setMigrationStatus(`Migrated ${migratedCount} questions...`);
-      }
-      
-      setMigrationStatus(`Successfully migrated ${migratedCount} questions!`);
-      loadSavedAssessments(selectedFolderId || undefined);
-      setTimeout(() => setMigrationStatus(null), 5000);
-    } catch (error) {
-      console.error("Migration failed:", error);
-      setMigrationStatus("Migration failed. Check console for details.");
-      setTimeout(() => setMigrationStatus(null), 5000);
-    } finally {
-      setLoading(false);
-    }
-  };
 
   const getQuestionCount = (markdown: string) => {
     if (!markdown) return 0;
@@ -1270,24 +1222,7 @@ export default function App() {
                     <p className="text-stone-500 font-medium">Organize and reuse your Cambridge assessments.</p>
                   </div>
                   <div className="flex items-center gap-4">
-                    {bankView === "questions" && user && (
-                      <div className="flex items-center gap-3">
-                        {migrationStatus && (
-                          <span className="text-[10px] font-bold text-emerald-600 animate-pulse">
-                            {migrationStatus}
-                          </span>
-                        )}
-                        <button 
-                          onClick={migrateData}
-                          disabled={loading}
-                          className="px-4 py-2 text-[10px] font-black uppercase tracking-widest text-emerald-600 hover:bg-emerald-50 rounded-xl transition-all flex items-center gap-2 disabled:opacity-50"
-                          title="Convert all old assessments to individual questions"
-                        >
-                          <RefreshCw className={cn("w-3 h-3", loading && "animate-spin")} />
-                          Migrate Old Data
-                        </button>
-                      </div>
-                    )}
+
                     <div className="flex bg-stone-100 p-1 rounded-xl">
                       <button 
                         onClick={() => setBankView("assessments")}
@@ -1636,7 +1571,7 @@ export default function App() {
                                     )
                                   }}
                                 >
-                                  {q.content}
+                                  {getPreviewContent(q.content)}
                                 </ReactMarkdown>
                               </div>
                               <div className="flex items-center justify-between pt-4 border-t border-stone-50">
@@ -1712,7 +1647,7 @@ export default function App() {
                             remarkPlugins={[remarkMath, remarkGfm]} 
                             rehypePlugins={[rehypeKatex, rehypeRaw]}
                           >
-                            {test.questions}
+                            {normalizeMarkdown(test.questions)}
                           </ReactMarkdown>
                         </div>
                         
@@ -1817,7 +1752,7 @@ export default function App() {
                           }
                         }}
                       >
-                        {test[activeTab]}
+                        {normalizeMarkdown(test[activeTab])}
                       </ReactMarkdown>
                     </div>
                   )}
@@ -1854,7 +1789,7 @@ export default function App() {
                         remarkPlugins={[remarkMath, remarkGfm]} 
                         rehypePlugins={[rehypeKatex, rehypeRaw]}
                       >
-                        {analysis.analysis}
+                        {normalizeMarkdown(analysis.analysis)}
                       </ReactMarkdown>
                     </div>
                   )}
@@ -1945,7 +1880,7 @@ export default function App() {
                             }
                           }}
                         >
-                          {activeTab === 'questions' ? analysis.similarQuestions : activeTab === 'answerKey' ? analysis.answerKey : analysis.markScheme}
+                          {normalizeMarkdown(activeTab === 'questions' ? analysis.similarQuestions : activeTab === 'answerKey' ? analysis.answerKey : analysis.markScheme)}
                         </ReactMarkdown>
                       </div>
                     )}
