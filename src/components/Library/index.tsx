@@ -33,7 +33,15 @@ const svgComponents = {
   code({ className, children }: any) {
     if (className === 'language-svg') {
       const safe = parseSVGSafe(String(children))
-      if (safe) return <div dangerouslySetInnerHTML={{ __html: safe }} className="my-2" />
+      if (safe) return (
+        <div className="my-3 border-t-2 border-b-2 border-violet-100 py-3 bg-violet-50/30 rounded-sm">
+          <p className="text-xs font-semibold text-violet-400 mb-2 flex items-center gap-1.5 px-1">
+            <span className="w-1.5 h-1.5 rounded-full bg-violet-300 inline-block" />
+            Diagram
+          </p>
+          <div dangerouslySetInnerHTML={{ __html: safe }} style={{ fontSize: '0.85em' }} />
+        </div>
+      )
       return <span className="text-stone-400 text-xs italic">[Diagram unavailable]</span>
     }
     return <code className={className}>{children}</code>
@@ -117,15 +125,15 @@ function QuestionPreviewModal({
             <div className="flex flex-col gap-3">
               <div>
                 <label className="text-xs font-medium text-stone-600 mb-1 block">Question</label>
-                <RichEditor value={draft.text} onChange={v => setDraft(d => ({ ...d, text: v }))} minRows={4} />
+                <RichEditor value={draft.text} onChange={v => setDraft(d => ({ ...d, text: v }))} minRows={8} />
               </div>
               <div>
                 <label className="text-xs font-medium text-stone-600 mb-1 block">Answer</label>
-                <RichEditor value={draft.answer} onChange={v => setDraft(d => ({ ...d, answer: v }))} minRows={3} />
+                <RichEditor value={draft.answer} onChange={v => setDraft(d => ({ ...d, answer: v }))} minRows={6} />
               </div>
               <div>
                 <label className="text-xs font-medium text-stone-600 mb-1 block">Mark Scheme</label>
-                <RichEditor value={draft.markScheme} onChange={v => setDraft(d => ({ ...d, markScheme: v }))} minRows={3} />
+                <RichEditor value={draft.markScheme} onChange={v => setDraft(d => ({ ...d, markScheme: v }))} minRows={6} />
               </div>
             </div>
           ) : (
