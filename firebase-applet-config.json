@@ -1,10 +1,10 @@
 {
-  "projectId": "gen-lang-client-0087176168",
-  "appId": "1:530456416670:web:759ce22adc04f8fee6c68f",
-  "apiKey": "AIzaSyBaHQDFtv5Oe6cbqTkRTnbe1wOUZy-OZVE",
-  "authDomain": "gen-lang-client-0087176168.firebaseapp.com",
-  "firestoreDatabaseId": "ai-studio-563708e0-eb42-4a32-b244-2d2ad9d27e21",
-  "storageBucket": "gen-lang-client-0087176168.firebasestorage.app",
-  "messagingSenderId": "530456416670",
-  "measurementId": ""
+  "projectId": "igcse-tools",
+  "appId": "1:1033495011810:web:38d53ccf5a37365f7e19bb",
+  "apiKey": "AIzaSyBq1oh4pIbCAvD_fE1sYV5Nl8KmNIw4GfU",
+  "authDomain": "igcse-tools.firebaseapp.com",
+  "firestoreDatabaseId": "(default)",
+  "storageBucket": "igcse-tools.firebasestorage.app",
+  "messagingSenderId": "1033495011810",
+  "measurementId": "G-HC354HMS5F"
 }
