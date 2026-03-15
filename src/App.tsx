@@ -3,7 +3,8 @@ import { onAuthStateChanged, User } from 'firebase/auth'
 import { BookOpen, LogIn, LogOut, Library as LibraryIcon } from 'lucide-react'
 import { auth, signInWithGoogle, logout } from './lib/firebase'
 import { IGCSE_TOPICS } from './lib/gemini'
-import type { GenerationConfig } from './lib/types'
+import { Timestamp } from 'firebase/firestore'
+import type { GenerationConfig, Assessment, Question } from './lib/types'
 import { useNotifications } from './hooks/useNotifications'
 import { useAssessments } from './hooks/useAssessments'
 import { useGeneration } from './hooks/useGeneration'
@@ -66,6 +67,26 @@ export default function App() {
     if (!generation.generatedAssessment) return
     await library.saveAssessment(generation.generatedAssessment)
   }, [generation.generatedAssessment, library])
+
+  const handleCreateAssessmentFromQuestions = useCallback((questions: Question[]) => {
+    const assessment: Assessment = {
+      id: crypto.randomUUID(),
+      subject: questions[0]?.subject ?? 'Mixed',
+      topic: 'Custom Selection',
+      difficulty: questions[0]?.difficulty ?? 'Mixed',
+      questions,
+      userId: '',
+      createdAt: Timestamp.now(),
+    }
+    generation.setGeneratedAssessment(assessment)
+    setView('main')
+  }, [generation])
+
+  const handleAddQuestionsToAssessment = useCallback(async (assessmentId: string, newQuestions: Question[]) => {
+    const target = library.assessments.find(a => a.id === assessmentId)
+    if (!target) return
+    await library.updateAssessment(assessmentId, { questions: [...target.questions, ...newQuestions] })
+  }, [library])
 
   const handleCopy = useCallback(async (text: string) => {
     const ok = await copyToClipboard(text)
@@ -154,6 +175,8 @@ export default function App() {
             onDeleteFolder={library.deleteFolder}
             selectedFolderId={selectedFolderId}
             onSelectFolder={setSelectedFolderId}
+            onCreateAssessmentFromQuestions={handleCreateAssessmentFromQuestions}
+            onAddQuestionsToAssessment={handleAddQuestionsToAssessment}
           />
         ) : (
           <AssessmentView
