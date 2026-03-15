@@ -15,6 +15,17 @@ function generateQuestionCode(subject: string, text: string): string {
   return `${subj}-${syl}-${shortId}`
 }
 
+const DIFFICULTY_CODES: Record<string, string> = {
+  'Easy': 'EAS', 'Medium': 'MED', 'Challenging': 'CHL', 'Balanced': 'BAL',
+}
+
+export function generateAssessmentCode(subject: string, difficulty: string): string {
+  const subj = SUBJECT_CODES[subject] ?? subject.substring(0, 3).toUpperCase()
+  const diff = DIFFICULTY_CODES[difficulty] ?? difficulty.substring(0, 3).toUpperCase()
+  const shortId = Math.random().toString(36).substring(2, 6).toUpperCase()
+  return `${subj}-${diff}-${shortId}`
+}
+
 export const IGCSE_SUBJECTS = ["Mathematics", "Biology", "Physics", "Chemistry"];
 
 export const IGCSE_TOPICS: Record<string, string[]> = {

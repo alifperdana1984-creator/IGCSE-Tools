@@ -2,6 +2,7 @@ import { useState, useCallback } from 'react'
 import type { User } from 'firebase/auth'
 import type { Assessment, Question, Folder } from '../lib/types'
 import type { NotifyFn } from './useNotifications'
+import { generateAssessmentCode } from '../lib/gemini'
 import {
   saveAssessment as fbSave,
   getSavedAssessments,
@@ -49,6 +50,7 @@ export function useAssessments(user: User | null, notify: NotifyFn) {
   const saveAssessment = useCallback(async (assessment: Assessment): Promise<string | null> => {
     try {
       const { id, createdAt, userId, ...data } = assessment
+      if (!data.code) data.code = generateAssessmentCode(assessment.subject, assessment.difficulty)
       const newId = await fbSave(data)
       const existingIds = new Set(questions.map(q => q.id))
       await Promise.all(

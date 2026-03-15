@@ -147,6 +147,29 @@ function QuestionPreviewModal({
   )
 }
 
+type DeleteTarget = { type: 'assessment' | 'question' | 'folder'; id: string; label: string }
+
+function ConfirmDeleteModal({ target, onConfirm, onCancel }: {
+  target: DeleteTarget
+  onConfirm: () => void
+  onCancel: () => void
+}) {
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={onCancel}>
+      <div className="bg-white rounded-xl shadow-xl w-full max-w-sm mx-4 p-5 flex flex-col gap-4" onClick={e => e.stopPropagation()}>
+        <h2 className="text-sm font-semibold text-stone-800">Delete {target.type}?</h2>
+        <p className="text-xs text-stone-500">
+          <span className="font-medium text-stone-700">"{target.label}"</span> will be permanently deleted. This cannot be undone.
+        </p>
+        <div className="flex justify-end gap-2">
+          <button onClick={onCancel} className="px-3 py-1.5 text-xs bg-stone-100 text-stone-600 rounded-lg font-medium hover:bg-stone-200">Cancel</button>
+          <button onClick={onConfirm} className="px-3 py-1.5 text-xs bg-red-600 text-white rounded-lg font-medium hover:bg-red-700">Delete</button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 export function Library({
   assessments, questions, folders, loading,
   onSelect, onDeleteAssessment, onMoveAssessment, onRenameAssessment,
@@ -163,6 +186,15 @@ export function Library({
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
   const [previewQuestion, setPreviewQuestion] = useState<Question | null>(null)
   const [addToAssessmentId, setAddToAssessmentId] = useState('')
+  const [confirmDelete, setConfirmDelete] = useState<DeleteTarget | null>(null)
+
+  const handleConfirmDelete = () => {
+    if (!confirmDelete) return
+    if (confirmDelete.type === 'assessment') onDeleteAssessment(confirmDelete.id)
+    else if (confirmDelete.type === 'question') onDeleteQuestion(confirmDelete.id)
+    else if (confirmDelete.type === 'folder') onDeleteFolder(confirmDelete.id)
+    setConfirmDelete(null)
+  }
 
   const toggleSelect = (id: string) => {
     setSelectedIds(prev => {
@@ -225,7 +257,7 @@ export function Library({
               <FolderIcon className="w-3.5 h-3.5" /> {f.name}
             </button>
             <button
-              onClick={() => onDeleteFolder(f.id)}
+              onClick={() => setConfirmDelete({ type: 'folder', id: f.id, label: f.name })}
               className="opacity-0 group-hover:opacity-100 p-0.5 text-red-400 hover:text-red-600"
             >
               <Trash2 className="w-3 h-3" />
@@ -313,7 +345,10 @@ export function Library({
                         </div>
                       ) : (
                         <button onClick={() => onSelect(a)} className="text-left">
-                          <div className="text-sm font-medium text-stone-800">{a.topic}</div>
+                          <div className="flex items-center gap-2">
+                            <span className="text-sm font-medium text-stone-800">{a.topic}</span>
+                            {a.code && <span className="text-xs font-mono bg-stone-100 text-stone-500 px-1.5 py-0.5 rounded">{a.code}</span>}
+                          </div>
                           <div className="text-xs text-stone-500">{a.subject} · {a.difficulty} · {a.questions.length}q</div>
                         </button>
                       )}
@@ -328,7 +363,7 @@ export function Library({
                         <option value="">No folder</option>
                         {folders.map(f => <option key={f.id} value={f.id}>{f.name}</option>)}
                       </select>
-                      <button onClick={() => onDeleteAssessment(a.id)} className="p-1 text-red-400 hover:text-red-600"><Trash2 className="w-3.5 h-3.5" /></button>
+                      <button onClick={() => setConfirmDelete({ type: 'assessment', id: a.id, label: a.topic + (a.code ? ` (${a.code})` : '') })} className="p-1 text-red-400 hover:text-red-600"><Trash2 className="w-3.5 h-3.5" /></button>
                     </div>
                   </div>
                 </div>
@@ -392,7 +427,7 @@ export function Library({
                         <option value="">No folder</option>
                         {folders.map(f => <option key={f.id} value={f.id}>{f.name}</option>)}
                       </select>
-                      <button onClick={() => onDeleteQuestion(q.id)} className="p-1 text-red-400 hover:text-red-600">
+                      <button onClick={() => setConfirmDelete({ type: 'question', id: q.id, label: q.code ?? q.text.substring(0, 40) })} className="p-1 text-red-400 hover:text-red-600">
                         <Trash2 className="w-3 h-3" />
                       </button>
                     </div>
@@ -406,6 +441,15 @@ export function Library({
           )}
         </div>
       </div>
+
+      {/* Confirm Delete Modal */}
+      {confirmDelete && (
+        <ConfirmDeleteModal
+          target={confirmDelete}
+          onConfirm={handleConfirmDelete}
+          onCancel={() => setConfirmDelete(null)}
+        />
+      )}
 
       {/* Preview Modal */}
       {previewQuestion && (

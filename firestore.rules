@@ -44,7 +44,7 @@ service cloud.firestore {
     }
 
     function isValidAssessment(data) {
-      return hasOnlyAllowedFields(['subject', 'topic', 'difficulty', 'questions', 'userId', 'createdAt', 'folderId']) &&
+      return hasOnlyAllowedFields(['subject', 'topic', 'difficulty', 'questions', 'code', 'userId', 'createdAt', 'folderId']) &&
              data.subject is string && data.subject.size() > 0 && data.subject.size() < 100 &&
              data.topic is string && data.topic.size() > 0 && data.topic.size() < 200 &&
              data.questions is list &&

@@ -14,6 +14,7 @@ export interface QuestionItem {
 
 export interface Assessment {
   id: string
+  code?: string
   subject: string
   topic: string
   difficulty: string
