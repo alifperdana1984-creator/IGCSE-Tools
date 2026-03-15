@@ -4,9 +4,8 @@ import remarkMath from 'remark-math'
 import remarkGfm from 'remark-gfm'
 import rehypeKatex from 'rehype-katex'
 import rehypeRaw from 'rehype-raw'
-import { Download, Copy, Save, Edit3, BookmarkPlus } from 'lucide-react'
-import type { Assessment } from '../../lib/types'
-import { copyToClipboard } from '../../lib/clipboard'
+import { Download, Copy, Save, Edit3, BookmarkPlus, X, Plus, Check } from 'lucide-react'
+import type { Assessment, Question, QuestionItem } from '../../lib/types'
 import { parseSVGSafe } from '../../lib/svg'
 import { exportToPDF } from '../../lib/pdf'
 
@@ -23,6 +22,9 @@ interface Props {
   onCopy: (text: string) => void
   activeTab: 'questions' | 'answerKey' | 'markScheme'
   onTabChange: (tab: 'questions' | 'answerKey' | 'markScheme') => void
+  onRemoveQuestion?: (questionId: string) => void
+  bankQuestions?: Question[]
+  onAddQuestions?: (questions: QuestionItem[]) => void
 }
 
 function QuestionMarkdown({ content }: { content: string }) {
@@ -47,15 +49,85 @@ function QuestionMarkdown({ content }: { content: string }) {
   )
 }
 
+function BankPickerModal({
+  questions,
+  currentIds,
+  onAdd,
+  onClose,
+}: {
+  questions: Question[]
+  currentIds: Set<string>
+  onAdd: (qs: QuestionItem[]) => void
+  onClose: () => void
+}) {
+  const [selected, setSelected] = useState<Set<string>>(new Set())
+  const toggle = (id: string) => setSelected(prev => {
+    const next = new Set(prev)
+    next.has(id) ? next.delete(id) : next.add(id)
+    return next
+  })
+  const available = questions.filter(q => !currentIds.has(q.id))
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={onClose}>
+      <div className="bg-white rounded-xl shadow-xl w-full max-w-xl max-h-[70vh] flex flex-col mx-4" onClick={e => e.stopPropagation()}>
+        <div className="flex items-center justify-between px-4 py-3 border-b border-stone-200">
+          <span className="text-sm font-semibold text-stone-800">Add from Question Bank</span>
+          <button onClick={onClose} className="p-1 text-stone-400 hover:text-stone-600"><X className="w-4 h-4" /></button>
+        </div>
+        <div className="flex-1 overflow-y-auto p-3 flex flex-col gap-2">
+          {available.length === 0 && (
+            <p className="text-sm text-stone-400 text-center py-8">No questions available to add.</p>
+          )}
+          {available.map(q => {
+            const sel = selected.has(q.id)
+            return (
+              <div
+                key={q.id}
+                onClick={() => toggle(q.id)}
+                className={`flex gap-2 items-start p-2.5 rounded-lg border cursor-pointer transition-all
+                  ${sel ? 'border-emerald-400 bg-emerald-50' : 'border-stone-200 hover:border-emerald-300 hover:bg-stone-50'}`}
+              >
+                <div className={`mt-0.5 w-4 h-4 rounded border-2 flex items-center justify-center shrink-0 transition-colors
+                  ${sel ? 'border-emerald-500 bg-emerald-500' : 'border-stone-300'}`}>
+                  {sel && <Check className="w-2.5 h-2.5 text-white" strokeWidth={3} />}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-xs text-stone-700 truncate">
+                    {q.text.replace(/```svg[\s\S]*?```/g, '[diagram]').replace(/<svg[\s\S]*?<\/svg>/gi, '[diagram]').replace(/\*\*/g, '').substring(0, 100)}...
+                  </p>
+                  <p className="text-xs text-stone-400 mt-0.5">{q.subject} · {q.marks}m · {q.commandWord}</p>
+                </div>
+              </div>
+            )
+          })}
+        </div>
+        <div className="px-4 py-3 border-t border-stone-200 flex justify-end gap-2">
+          <button onClick={onClose} className="px-3 py-1.5 text-xs bg-stone-100 text-stone-600 rounded-lg font-medium hover:bg-stone-200">Cancel</button>
+          <button
+            disabled={selected.size === 0}
+            onClick={() => { onAdd(available.filter(q => selected.has(q.id))); onClose() }}
+            className="px-3 py-1.5 text-xs bg-emerald-600 text-white rounded-lg font-medium hover:bg-emerald-700 disabled:bg-stone-300"
+          >
+            Add {selected.size > 0 ? `(${selected.size})` : ''}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 export function AssessmentView({
   assessment, analysisText, isEditing, studentMode,
   onEdit, onCancelEdit, onSave, onSaveToLibrary, onStudentFeedback, onCopy,
   activeTab, onTabChange,
+  onRemoveQuestion, bankQuestions, onAddQuestions,
 }: Props) {
   const contentRef = useRef<HTMLDivElement>(null)
   const [studentAnswers, setStudentAnswers] = useState<string[]>([])
   const [feedback, setFeedback] = useState<string | null>(null)
   const [editContent, setEditContent] = useState('')
+  const [showPicker, setShowPicker] = useState(false)
 
   if (!assessment) {
     return (
@@ -89,6 +161,8 @@ export function AssessmentView({
     : activeTab === 'answerKey' ? answerKeyText
     : markSchemeText
 
+  const currentIds = new Set(assessment.questions.map(q => q.id))
+
   return (
     <div className="flex-1 flex flex-col overflow-hidden">
       {/* Header */}
@@ -100,12 +174,21 @@ export function AssessmentView({
               onClick={() => onTabChange(tab)}
               className={`text-xs px-3 py-1.5 rounded-lg font-medium ${activeTab === tab ? 'bg-emerald-600 text-white' : 'bg-stone-100 text-stone-600 hover:bg-stone-200'}`}
             >
-              {tab === 'questions' ? 'Questions' : tab === 'answerKey' ? 'Answer Key' : 'Mark Scheme'}
+              {tab === 'questions' ? `Questions (${assessment.questions.length})` : tab === 'answerKey' ? 'Answer Key' : 'Mark Scheme'}
             </button>
           ))}
         </div>
-        <div className="flex gap-1.5">
-          <button onClick={onSaveToLibrary} className="px-3 py-1.5 text-xs bg-emerald-600 text-white rounded-lg font-medium flex items-center gap-1 hover:bg-emerald-700" title="Save to Library">
+        <div className="flex gap-1.5 items-center">
+          {onAddQuestions && bankQuestions && !studentMode && (
+            <button
+              onClick={() => setShowPicker(true)}
+              className="px-2.5 py-1.5 text-xs bg-stone-100 text-stone-600 rounded-lg font-medium flex items-center gap-1 hover:bg-stone-200"
+              title="Add questions from bank"
+            >
+              <Plus className="w-3.5 h-3.5" /> Add
+            </button>
+          )}
+          <button onClick={onSaveToLibrary} className="px-3 py-1.5 text-xs bg-emerald-600 text-white rounded-lg font-medium flex items-center gap-1 hover:bg-emerald-700">
             <BookmarkPlus className="w-3.5 h-3.5" /> Save
           </button>
           <button onClick={() => onCopy(currentText)} className="p-1.5 text-stone-500 hover:bg-stone-100 rounded" title="Copy">
@@ -116,15 +199,15 @@ export function AssessmentView({
           </button>
           {isEditing ? (
             <>
-              <button onClick={onSave} className="px-3 py-1.5 text-xs bg-emerald-600 text-white rounded-lg font-medium flex items-center gap-1">
-                <Save className="w-3.5 h-3.5" /> Save
+              <button onClick={onSave} className="px-3 py-1.5 text-xs bg-stone-700 text-white rounded-lg font-medium flex items-center gap-1">
+                <Save className="w-3.5 h-3.5" /> Apply
               </button>
               <button onClick={onCancelEdit} className="px-3 py-1.5 text-xs bg-stone-100 text-stone-600 rounded-lg font-medium">
                 Cancel
               </button>
             </>
           ) : (
-            <button onClick={onEdit} className="p-1.5 text-stone-500 hover:bg-stone-100 rounded" title="Edit">
+            <button onClick={onEdit} className="p-1.5 text-stone-500 hover:bg-stone-100 rounded" title="Edit markdown">
               <Edit3 className="w-4 h-4" />
             </button>
           )}
@@ -148,12 +231,21 @@ export function AssessmentView({
         ) : (
           <div>
             {activeTab === 'questions' && assessment.questions.map((q, i) => (
-              <div key={q.id} className="mb-6">
+              <div key={q.id} className="mb-6 group">
                 <div className="flex items-center gap-2 mb-1">
                   <span className="text-xs font-semibold bg-emerald-100 text-emerald-800 px-2 py-0.5 rounded">
                     Q{i + 1} · {q.marks}m · {q.commandWord}
                   </span>
                   <span className="text-xs text-stone-400">{q.type}</span>
+                  {onRemoveQuestion && !studentMode && (
+                    <button
+                      onClick={() => onRemoveQuestion(q.id)}
+                      className="ml-auto opacity-0 group-hover:opacity-100 p-0.5 text-red-400 hover:text-red-600 transition-opacity"
+                      title="Remove question"
+                    >
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                  )}
                 </div>
                 <QuestionMarkdown content={q.text} />
                 {studentMode && (
@@ -207,6 +299,15 @@ export function AssessmentView({
           </div>
         )}
       </div>
+
+      {showPicker && bankQuestions && onAddQuestions && (
+        <BankPickerModal
+          questions={bankQuestions}
+          currentIds={currentIds}
+          onAdd={onAddQuestions}
+          onClose={() => setShowPicker(false)}
+        />
+      )}
     </div>
   )
 }

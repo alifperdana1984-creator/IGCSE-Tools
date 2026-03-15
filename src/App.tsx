@@ -1,10 +1,10 @@
 import React, { useState, useEffect, useCallback } from 'react'
 import { onAuthStateChanged, User } from 'firebase/auth'
-import { BookOpen, LogIn, LogOut, Library as LibraryIcon } from 'lucide-react'
+import { BookOpen, LogIn, LogOut, Library as LibraryIcon, FilePlus } from 'lucide-react'
 import { auth, signInWithGoogle, logout } from './lib/firebase'
-import { IGCSE_TOPICS } from './lib/gemini'
+import { IGCSE_SUBJECTS, IGCSE_TOPICS, DIFFICULTY_LEVELS } from './lib/gemini'
 import { Timestamp } from 'firebase/firestore'
-import type { GenerationConfig, Assessment, Question } from './lib/types'
+import type { GenerationConfig, Assessment, Question, QuestionItem } from './lib/types'
 import { useNotifications } from './hooks/useNotifications'
 import { useAssessments } from './hooks/useAssessments'
 import { useGeneration } from './hooks/useGeneration'
@@ -26,6 +26,64 @@ const DEFAULT_CONFIG: GenerationConfig = {
   syllabusContext: '',
 }
 
+function NewAssessmentModal({ onConfirm, onClose }: {
+  onConfirm: (subject: string, topic: string, difficulty: string) => void
+  onClose: () => void
+}) {
+  const [subject, setSubject] = useState('Mathematics')
+  const [topic, setTopic] = useState(IGCSE_TOPICS['Mathematics'][0])
+  const [difficulty, setDifficulty] = useState('Balanced')
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={onClose}>
+      <div className="bg-white rounded-xl shadow-xl w-full max-w-sm mx-4 p-5 flex flex-col gap-4" onClick={e => e.stopPropagation()}>
+        <h2 className="text-sm font-semibold text-stone-800">New Assessment</h2>
+        <div className="flex flex-col gap-3">
+          <div>
+            <label className="text-xs font-medium text-stone-600 mb-1 block">Subject</label>
+            <select
+              value={subject}
+              onChange={e => { setSubject(e.target.value); setTopic(IGCSE_TOPICS[e.target.value][0]) }}
+              className="w-full text-sm border border-stone-300 rounded-lg px-2 py-1.5"
+            >
+              {IGCSE_SUBJECTS.map(s => <option key={s}>{s}</option>)}
+            </select>
+          </div>
+          <div>
+            <label className="text-xs font-medium text-stone-600 mb-1 block">Topic</label>
+            <select
+              value={topic}
+              onChange={e => setTopic(e.target.value)}
+              className="w-full text-sm border border-stone-300 rounded-lg px-2 py-1.5"
+            >
+              {(IGCSE_TOPICS[subject] ?? []).map(t => <option key={t}>{t}</option>)}
+            </select>
+          </div>
+          <div>
+            <label className="text-xs font-medium text-stone-600 mb-1 block">Difficulty</label>
+            <select
+              value={difficulty}
+              onChange={e => setDifficulty(e.target.value)}
+              className="w-full text-sm border border-stone-300 rounded-lg px-2 py-1.5"
+            >
+              {DIFFICULTY_LEVELS.map(d => <option key={d}>{d}</option>)}
+            </select>
+          </div>
+        </div>
+        <div className="flex justify-end gap-2">
+          <button onClick={onClose} className="px-3 py-1.5 text-xs bg-stone-100 text-stone-600 rounded-lg font-medium hover:bg-stone-200">Cancel</button>
+          <button
+            onClick={() => onConfirm(subject, topic, difficulty)}
+            className="px-3 py-1.5 text-xs bg-emerald-600 text-white rounded-lg font-medium hover:bg-emerald-700"
+          >
+            Create
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 export default function App() {
   const [user, setUser] = useState<User | null>(null)
   const [view, setView] = useState<'main' | 'library'>('main')
@@ -35,6 +93,7 @@ export default function App() {
   const [activeTab, setActiveTab] = useState<'questions' | 'answerKey' | 'markScheme'>('questions')
   const [isEditing, setIsEditing] = useState(false)
   const [selectedFolderId, setSelectedFolderId] = useState<string | null | undefined>(undefined)
+  const [showNewAssessmentModal, setShowNewAssessmentModal] = useState(false)
 
   const { notifications, notify, dismiss } = useNotifications()
   const library = useAssessments(user, notify)
@@ -63,10 +122,57 @@ export default function App() {
     generation.generate({ ...config, syllabusContext }, resources.knowledgeBase, resources.getBase64)
   }, [config, syllabusContext, resources.knowledgeBase, resources.getBase64, generation])
 
+  // Smart save: update if already in Firestore, else create new
   const handleSave = useCallback(async () => {
-    if (!generation.generatedAssessment) return
-    await library.saveAssessment(generation.generatedAssessment)
-  }, [generation.generatedAssessment, library])
+    const assessment = generation.generatedAssessment
+    if (!assessment) return
+    const alreadySaved = library.assessments.some(a => a.id === assessment.id)
+    if (alreadySaved) {
+      await library.updateAssessment(assessment.id, {
+        questions: assessment.questions,
+        topic: assessment.topic,
+        subject: assessment.subject,
+        difficulty: assessment.difficulty,
+      })
+      notify('Assessment updated', 'success')
+    } else {
+      const savedId = await library.saveAssessment(assessment)
+      if (savedId) generation.setGeneratedAssessment({ ...assessment, id: savedId })
+    }
+  }, [generation, library, notify])
+
+  const handleCreateBlankAssessment = useCallback((subject: string, topic: string, difficulty: string) => {
+    const assessment: Assessment = {
+      id: crypto.randomUUID(),
+      subject,
+      topic,
+      difficulty,
+      questions: [],
+      userId: '',
+      createdAt: Timestamp.now(),
+    }
+    generation.setGeneratedAssessment(assessment)
+    setView('main')
+    setShowNewAssessmentModal(false)
+  }, [generation])
+
+  const handleRemoveQuestion = useCallback((questionId: string) => {
+    const assessment = generation.generatedAssessment
+    if (!assessment) return
+    generation.setGeneratedAssessment({
+      ...assessment,
+      questions: assessment.questions.filter(q => q.id !== questionId),
+    })
+  }, [generation])
+
+  const handleAddQuestionsToCurrentAssessment = useCallback((questions: QuestionItem[]) => {
+    const assessment = generation.generatedAssessment
+    if (!assessment) return
+    generation.setGeneratedAssessment({
+      ...assessment,
+      questions: [...assessment.questions, ...questions],
+    })
+  }, [generation])
 
   const handleCreateAssessmentFromQuestions = useCallback((questions: Question[]) => {
     const assessment: Assessment = {
@@ -145,6 +251,13 @@ export default function App() {
           </h1>
           <div className="flex items-center gap-2">
             <button
+              onClick={() => setShowNewAssessmentModal(true)}
+              className="flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-lg font-medium bg-stone-100 text-stone-600 hover:bg-stone-200"
+              title="Create blank assessment"
+            >
+              <FilePlus className="w-3.5 h-3.5" /> New
+            </button>
+            <button
               onClick={() => setView(v => v === 'library' ? 'main' : 'library')}
               className={`flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-lg font-medium ${view === 'library' ? 'bg-emerald-600 text-white' : 'bg-stone-100 text-stone-600 hover:bg-stone-200'}`}
             >
@@ -192,11 +305,21 @@ export default function App() {
             onCopy={handleCopy}
             activeTab={activeTab}
             onTabChange={setActiveTab}
+            onRemoveQuestion={handleRemoveQuestion}
+            bankQuestions={library.questions}
+            onAddQuestions={handleAddQuestionsToCurrentAssessment}
           />
         )}
       </div>
 
       <Notifications notifications={notifications} onDismiss={dismiss} />
+
+      {showNewAssessmentModal && (
+        <NewAssessmentModal
+          onConfirm={handleCreateBlankAssessment}
+          onClose={() => setShowNewAssessmentModal(false)}
+        />
+      )}
     </div>
   )
 }
