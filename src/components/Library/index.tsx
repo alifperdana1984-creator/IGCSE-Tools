@@ -63,6 +63,9 @@ function QuestionPreviewModal({ question, onClose }: { question: Question; onClo
               {question.marks}m · {question.commandWord}
             </span>
             <span className="text-xs text-stone-400">{question.type} · {question.subject}</span>
+            {question.code && (
+              <span className="text-xs font-mono bg-stone-100 text-stone-600 px-1.5 py-0.5 rounded">{question.code}</span>
+            )}
           </div>
           <button onClick={onClose} className="p-1 text-stone-400 hover:text-stone-600">
             <X className="w-4 h-4" />
@@ -305,7 +308,10 @@ export function Library({
                         .replace(/\*\*/g, '')
                         .substring(0, 120)}...
                       </div>
-                      <div className="text-xs text-stone-400 mt-0.5">{q.subject} · {q.marks}m · {q.commandWord}</div>
+                      <div className="text-xs text-stone-400 mt-0.5">
+                        {q.subject} · {q.marks}m · {q.commandWord}
+                        {q.code && <span className="ml-1 font-mono bg-stone-100 px-1 rounded text-stone-500">{q.code}</span>}
+                      </div>
                     </div>
 
                     {/* Actions */}

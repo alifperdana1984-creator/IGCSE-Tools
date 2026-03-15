@@ -2,6 +2,7 @@ import { Timestamp } from 'firebase/firestore'
 
 export interface QuestionItem {
   id: string
+  code?: string          // e.g. BIO-6.1-A3F9
   text: string           // markdown — soru metni
   answer: string         // markdown — cevap
   markScheme: string     // markdown — puan şeması

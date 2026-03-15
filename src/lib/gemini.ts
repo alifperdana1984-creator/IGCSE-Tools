@@ -3,6 +3,18 @@ import type { QuestionItem, Assessment, AnalyzeFileResult, GenerationConfig, Gem
 
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY || "" });
 
+const SUBJECT_CODES: Record<string, string> = {
+  'Mathematics': 'MAT', 'Biology': 'BIO', 'Physics': 'PHY', 'Chemistry': 'CHM',
+}
+
+function generateQuestionCode(subject: string, text: string): string {
+  const subj = SUBJECT_CODES[subject] ?? subject.substring(0, 3).toUpperCase()
+  const sylMatch = text.match(/Syllabus Reference[:\s]+([\d.]+)/i)
+  const syl = sylMatch ? sylMatch[1] : '?'
+  const shortId = Math.random().toString(36).substring(2, 6).toUpperCase()
+  return `${subj}-${syl}-${shortId}`
+}
+
 export const IGCSE_SUBJECTS = ["Mathematics", "Biology", "Physics", "Chemistry"];
 
 export const IGCSE_TOPICS: Record<string, string[]> = {
@@ -158,7 +170,10 @@ When generating SVG diagrams:
   }), 3, onRetry)
 
   const raw = safeJsonParse(response.text || '{}') as { questions: Omit<QuestionItem, 'id'>[] }
-  return (raw.questions ?? []).map(q => ({ ...sanitizeQuestion(q), id: crypto.randomUUID() }))
+  return (raw.questions ?? []).map(q => {
+    const sanitized = sanitizeQuestion(q)
+    return { ...sanitized, id: crypto.randomUUID(), code: generateQuestionCode(config.subject, sanitized.text) }
+  })
 }
 
 export async function auditTest(
@@ -219,10 +234,15 @@ If the assessment is perfect, return it as is.`
   }))
 
   const raw = JSON.parse(response.text || '{}') as { questions: Omit<QuestionItem, 'id'>[] }
-  return (raw.questions ?? []).map((q, i) => ({
-    ...sanitizeQuestion(q),
-    id: assessment.questions[i]?.id ?? crypto.randomUUID(),
-  }))
+  return (raw.questions ?? []).map((q, i) => {
+    const sanitized = sanitizeQuestion(q)
+    const existing = assessment.questions[i]
+    return {
+      ...sanitized,
+      id: existing?.id ?? crypto.randomUUID(),
+      code: existing?.code ?? generateQuestionCode(assessment.subject, sanitized.text),
+    }
+  })
 }
 
 export async function getStudentFeedback(
@@ -382,6 +402,9 @@ Use SVG for any diagrams using **camelCase** attributes.`,
   const raw = safeJsonParse(response.text || '{}')
   return {
     analysis: raw.analysis ?? '',
-    questions: (raw.questions ?? []).map((q: any) => ({ ...sanitizeQuestion(q), id: crypto.randomUUID() })),
+    questions: (raw.questions ?? []).map((q: any) => {
+      const sanitized = sanitizeQuestion(q)
+      return { ...sanitized, id: crypto.randomUUID(), code: generateQuestionCode(subject, sanitized.text) }
+    }),
   }
 }

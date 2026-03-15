@@ -237,6 +237,11 @@ export function AssessmentView({
                     Q{i + 1} · {q.marks}m · {q.commandWord}
                   </span>
                   <span className="text-xs text-stone-400">{q.type}</span>
+                  {q.code && (
+                    <span className="text-xs font-mono text-stone-400 bg-stone-100 px-1.5 py-0.5 rounded">
+                      {q.code}
+                    </span>
+                  )}
                   {onRemoveQuestion && !studentMode && (
                     <button
                       onClick={() => onRemoveQuestion(q.id)}
