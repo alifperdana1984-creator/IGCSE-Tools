@@ -130,9 +130,6 @@ export function useGeneration(
         setRetryCount(attempt)
         notify(`Rate limit hit, retrying (${attempt}/3)...`, 'info')
       })
-      setIsAuditing(true)
-      notify('Auditing assessment quality...', 'info')
-      await new Promise(r => setTimeout(r, 3000))
       const draft: Assessment = {
         id: crypto.randomUUID(),
         subject: config.subject,
@@ -142,7 +139,15 @@ export function useGeneration(
         userId: auth.currentUser?.uid ?? '',
         createdAt: Timestamp.now(),
       }
-      const auditedQuestions = await auditTest(config.subject, draft, config.model, config.provider, apiKey)
+      // Audit step only for Gemini — Anthropic/OpenAI already produce clean JSON
+      // and extra calls burn through per-minute rate limits
+      let auditedQuestions = questions
+      if (config.provider === 'gemini') {
+        setIsAuditing(true)
+        notify('Auditing assessment quality...', 'info')
+        await new Promise(r => setTimeout(r, 3000))
+        auditedQuestions = await auditTest(config.subject, draft, config.model, config.provider, apiKey)
+      }
       setGeneratedAssessment({ ...draft, questions: auditedQuestions })
       notify('Assessment generated successfully!', 'success')
     } catch (e: any) {
