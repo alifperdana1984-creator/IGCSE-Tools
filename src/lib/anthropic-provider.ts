@@ -100,6 +100,11 @@ function safeParseJson(text: string): any {
   }
 }
 
+function refData(ref: Reference): string {
+  const raw = ref.data ?? ''
+  return raw.includes(',') ? raw.split(',')[1] : raw
+}
+
 function buildAnthropicReferenceParts(references: Reference[], difficulty?: string): any[] {
   const parts: any[] = []
   const pastPapers = references.filter(r => r.resourceType === 'past_paper')
@@ -110,10 +115,16 @@ function buildAnthropicReferenceParts(references: Reference[], difficulty?: stri
     const focusInstruction = difficulty ? (PAST_PAPER_FOCUS[difficulty] ?? '') : ''
     parts.push({ type: 'text', text: `REFERENCE PAST PAPERS (${pastPapers.length} document${pastPapers.length > 1 ? 's' : ''}): The following are authentic Cambridge IGCSE past papers. Study them carefully and replicate their exact question style, phrasing, command word usage, and mark allocation patterns. Your generated questions MUST feel indistinguishable from these official papers.\n\n${focusInstruction}` })
     pastPapers.forEach(ref => {
-      const isImage = ref.mimeType.startsWith('image/')
-      const isPdf = ref.mimeType === 'application/pdf'
-      if (isImage) parts.push({ type: 'image', source: { type: 'base64', media_type: ref.mimeType, data: ref.data.split(',')[1] ?? ref.data } })
-      else if (isPdf) parts.push({ type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: ref.data.split(',')[1] ?? ref.data } })
+      if (ref.pastPaperText) {
+        parts.push({ type: 'text', text: `PAST PAPER CONTENT:\n${ref.pastPaperText}` })
+      } else {
+        const data = refData(ref)
+        if (!data) return
+        const isImage = ref.mimeType.startsWith('image/')
+        const isPdf = ref.mimeType === 'application/pdf'
+        if (isImage) parts.push({ type: 'image', source: { type: 'base64', media_type: ref.mimeType, data } })
+        else if (isPdf) parts.push({ type: 'document', source: { type: 'base64', media_type: 'application/pdf', data } })
+      }
     })
   }
 
@@ -122,18 +133,21 @@ function buildAnthropicReferenceParts(references: Reference[], difficulty?: stri
       if (ref.syllabusText) {
         parts.push({ type: 'text', text: `OFFICIAL CAMBRIDGE IGCSE SYLLABUS OBJECTIVES:\nOnly generate questions that directly assess the following learning objectives.\n\n${ref.syllabusText}` })
       } else {
+        const data = refData(ref)
+        if (!data) return
         parts.push({ type: 'text', text: `OFFICIAL CAMBRIDGE IGCSE SYLLABUS: Only generate questions covering the stated learning objectives in this syllabus document.` })
-        const isPdf = ref.mimeType === 'application/pdf'
-        if (isPdf) parts.push({ type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: ref.data.split(',')[1] ?? ref.data } })
+        if (ref.mimeType === 'application/pdf') parts.push({ type: 'document', source: { type: 'base64', media_type: 'application/pdf', data } })
       }
     })
   }
 
   others.forEach(ref => {
+    const data = refData(ref)
+    if (!data) return
     const isImage = ref.mimeType.startsWith('image/')
     const isPdf = ref.mimeType === 'application/pdf'
-    if (isImage) parts.push({ type: 'image', source: { type: 'base64', media_type: ref.mimeType, data: ref.data.split(',')[1] ?? ref.data } })
-    else if (isPdf) parts.push({ type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: ref.data.split(',')[1] ?? ref.data } })
+    if (isImage) parts.push({ type: 'image', source: { type: 'base64', media_type: ref.mimeType, data } })
+    else if (isPdf) parts.push({ type: 'document', source: { type: 'base64', media_type: 'application/pdf', data } })
   })
 
   return parts
@@ -322,10 +336,12 @@ Actually use this exact structure:
 
   if (references) {
     references.forEach(ref => {
+      const data = refData(ref)
+      if (!data) return
       const isImage = ref.mimeType.startsWith('image/')
       const isPdf = ref.mimeType === 'application/pdf'
-      if (isImage) content.push({ type: 'image', source: { type: 'base64', media_type: ref.mimeType, data: ref.data.split(',')[1] ?? ref.data } })
-      else if (isPdf) content.push({ type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: ref.data.split(',')[1] ?? ref.data } })
+      if (isImage) content.push({ type: 'image', source: { type: 'base64', media_type: ref.mimeType, data } })
+      else if (isPdf) content.push({ type: 'document', source: { type: 'base64', media_type: 'application/pdf', data } })
     })
   }
 
