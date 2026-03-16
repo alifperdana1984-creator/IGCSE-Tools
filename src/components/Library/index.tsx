@@ -410,8 +410,10 @@ export function Library({
 
           {bankView === 'assessments' && (
             <div className="grid grid-cols-1 gap-3">
-              {filteredAssessments.map(a => (
-                <div key={a.id} className="border border-stone-200 rounded-lg p-3 hover:border-emerald-300 hover:shadow-sm transition-all bg-white">
+              {filteredAssessments.map(a => {
+                const isGlobal = a.userId !== currentUserId && a.isPublic
+                return (
+                <div key={a.id} className={`border rounded-lg p-3 hover:shadow-sm transition-all ${isGlobal ? 'bg-sky-50 border-sky-200 hover:border-sky-400' : 'bg-white border-stone-200 hover:border-emerald-300'}`}>
                   <div className="flex items-start justify-between gap-2">
                     <div className="flex-1 min-w-0">
                       {renamingId === a.id ? (
@@ -474,6 +476,7 @@ export function Library({
                   </div>
                 </div>
               ))}
+              })}
               {filteredAssessments.length === 0 && !loading && (
                 <div className="text-stone-400 text-sm text-center py-8">
                   {subjectFilter ? `No ${subjectFilter} assessments found.` : 'No assessments saved yet.'}
@@ -486,13 +489,16 @@ export function Library({
             <div className="grid grid-cols-1 gap-2">
               {filteredQuestions.map(q => {
                 const isSelected = selectedIds.has(q.id)
+                const isGlobal = q.userId !== currentUserId && q.isPublic
                 return (
                   <div
                     key={q.id}
-                    className={`border rounded-lg p-2.5 bg-white flex gap-2 items-start cursor-pointer transition-all group
+                    className={`border rounded-lg p-2.5 flex gap-2 items-start cursor-pointer transition-all group
                       ${isSelected
                         ? 'border-emerald-400 bg-emerald-50 shadow-sm'
-                        : 'border-stone-200 hover:border-emerald-300 hover:shadow-sm hover:bg-stone-50'
+                        : isGlobal
+                          ? 'border-sky-200 bg-sky-50 hover:border-sky-400 hover:shadow-sm'
+                          : 'border-stone-200 bg-white hover:border-emerald-300 hover:shadow-sm hover:bg-stone-50'
                       }`}
                     onClick={() => toggleSelect(q.id)}
                   >
