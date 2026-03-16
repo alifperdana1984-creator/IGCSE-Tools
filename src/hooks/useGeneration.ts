@@ -181,17 +181,16 @@ export function useGeneration(
         createdAt: Timestamp.now(),
       }
       let auditedQuestions = questions
-      setIsAuditing(true)
-      const preferredAuditModel = DEFAULT_AUDIT_MODELS[config.provider] ?? config.model
-      notify(`Auditing assessment quality (${preferredAuditModel})...`, 'info')
-      try {
-        auditedQuestions = await auditTest(config.subject, draft, preferredAuditModel, config.provider, apiKey)
-      } catch (e: any) {
-        if (preferredAuditModel !== config.model) {
-          notify(`Audit model unavailable, retrying with ${config.model}...`, 'info')
-          auditedQuestions = await auditTest(config.subject, draft, config.model, config.provider, apiKey)
-        } else {
-          throw e
+      // Audit only for Gemini — OpenAI/Anthropic hit rate limits with extra calls
+      if (config.provider === 'gemini') {
+        setIsAuditing(true)
+        const auditModel = DEFAULT_AUDIT_MODELS['gemini']
+        notify('Auditing assessment quality...', 'info')
+        await new Promise(r => setTimeout(r, 3000))
+        try {
+          auditedQuestions = await auditTest(config.subject, draft, auditModel, config.provider, apiKey)
+        } catch {
+          // Non-fatal: use unaudited questions if audit fails
         }
       }
       setGeneratedAssessment({ ...draft, questions: auditedQuestions })

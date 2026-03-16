@@ -11,6 +11,7 @@ import {
 import { estimateCostIDR, MODEL_PRICING } from '../../lib/pricing'
 import {
   PROVIDER_LABELS, PROVIDER_MODELS, API_KEY_PLACEHOLDERS, API_KEY_URLS, API_USAGE_URLS,
+  DEFAULT_AUDIT_MODELS,
 } from '../../lib/providers'
 
 const QUESTION_TYPES = ['Mixed', 'Multiple Choice', 'Short Answer', 'Structured']
@@ -117,9 +118,24 @@ export function Sidebar({
 
   const models = PROVIDER_MODELS[provider] ?? []
   const effectiveModel = customModel.trim() || config.model
-  const inputTokens = Math.round(1500 + (syllabusContext.length / 4))
-  const outputTokens = config.count * 600
-  const costIDR = estimateCostIDR(effectiveModel, inputTokens, outputTokens)
+
+  // Cost estimate: generation + audit (Gemini only) + critiqueForDifficulty (Challenging)
+  const genInputTokens = Math.round(1500 + (syllabusContext.length / 4))
+  const genOutputTokens = config.count * 600
+  let totalCostIDR = estimateCostIDR(effectiveModel, genInputTokens, genOutputTokens)
+  // Gemini audit call uses pro model
+  if (provider === 'gemini') {
+    const auditModel = DEFAULT_AUDIT_MODELS['gemini']
+    const auditInputTokens = 800 + config.count * 400
+    const auditOutputTokens = config.count * 600
+    totalCostIDR += estimateCostIDR(auditModel, auditInputTokens, auditOutputTokens)
+  }
+  // Challenging adds a critiqueForDifficulty call (all providers)
+  if (config.difficulty === 'Challenging') {
+    const critiqueInputTokens = 800 + config.count * 400
+    const critiqueOutputTokens = config.count * 600
+    totalCostIDR += estimateCostIDR(effectiveModel, critiqueInputTokens, critiqueOutputTokens)
+  }
   const currentApiKey = apiKeys[provider] ?? ''
 
   return (
@@ -253,8 +269,10 @@ export function Sidebar({
 
         {/* Cost estimate */}
         <div className="text-xs text-stone-500 bg-stone-100 rounded px-2 py-1.5">
-          Estimated cost: ~Rp {costIDR.toLocaleString('id-ID')}
+          Estimated cost: ~Rp {totalCostIDR.toLocaleString('id-ID')}
           {!MODEL_PRICING_HAS(effectiveModel) && <span className="text-stone-400"> (estimate)</span>}
+          {provider === 'gemini' && <span className="text-stone-400"> (gen + audit)</span>}
+          {config.difficulty === 'Challenging' && <span className="text-stone-400"> (+ critique)</span>}
         </div>
 
         {/* Student mode */}
