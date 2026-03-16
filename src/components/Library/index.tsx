@@ -524,6 +524,15 @@ export function Library({
                           q.type === 'structured' ? 'bg-violet-100 text-violet-700' :
                           'bg-stone-100 text-stone-500'
                         }`}>{q.type === 'mcq' ? 'MCQ' : q.type === 'structured' ? 'Structured' : 'Short Answer'}</span>
+                        {q.difficultyStars && (
+                          <span className={`font-medium tracking-tight ${
+                            q.difficultyStars === 1 ? 'text-emerald-500' :
+                            q.difficultyStars === 2 ? 'text-amber-500' :
+                            'text-red-500'
+                          }`} title={q.difficultyStars === 1 ? 'Easy' : q.difficultyStars === 2 ? 'Medium' : 'Challenging'}>
+                            {'★'.repeat(q.difficultyStars)}{'☆'.repeat(3 - q.difficultyStars)}
+                          </span>
+                        )}
                         {q.code && <span className="font-mono bg-stone-100 px-1 rounded text-stone-500">{q.code}</span>}
                         {q.userId !== currentUserId && q.isPublic && q.preparedBy && (
                           <span className="ml-1 text-emerald-600">by {q.preparedBy}</span>

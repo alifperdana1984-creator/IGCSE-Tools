@@ -322,6 +322,15 @@ export function AssessmentView({
                           {q.code}
                         </span>
                       )}
+                      {q.difficultyStars && (
+                        <span className={`text-sm font-medium tracking-tight ${
+                          q.difficultyStars === 1 ? 'text-emerald-500' :
+                          q.difficultyStars === 2 ? 'text-amber-500' :
+                          'text-red-500'
+                        }`} title={q.difficultyStars === 1 ? 'Easy' : q.difficultyStars === 2 ? 'Medium' : 'Challenging'}>
+                          {'★'.repeat(q.difficultyStars)}{'☆'.repeat(3 - q.difficultyStars)}
+                        </span>
+                      )}
                       {q.syllabusObjective && (
                         <span className="text-xs text-violet-700 bg-violet-50 border border-violet-200 px-2 py-0.5 rounded-full" title="Syllabus objective">
                           📋 {q.syllabusObjective}

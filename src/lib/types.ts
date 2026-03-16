@@ -14,6 +14,7 @@ export interface QuestionItem {
   type: 'mcq' | 'short_answer' | 'structured'
   hasDiagram: boolean
   syllabusObjective?: string
+  difficultyStars?: 1 | 2 | 3
 }
 
 export interface Assessment {
