@@ -260,6 +260,17 @@ export default function App() {
     })
   }, [generation])
 
+  const handleMoveQuestion = useCallback((questionId: string, direction: 'up' | 'down') => {
+    const assessment = generation.generatedAssessment
+    if (!assessment) return
+    const idx = assessment.questions.findIndex(q => q.id === questionId)
+    const newIdx = direction === 'up' ? idx - 1 : idx + 1
+    if (idx === -1 || newIdx < 0 || newIdx >= assessment.questions.length) return
+    const questions = [...assessment.questions]
+    ;[questions[idx], questions[newIdx]] = [questions[newIdx], questions[idx]]
+    generation.setGeneratedAssessment({ ...assessment, questions })
+  }, [generation])
+
   const handleAddQuestionsToCurrentAssessment = useCallback((questions: QuestionItem[]) => {
     const assessment = generation.generatedAssessment
     if (!assessment) return
@@ -432,6 +443,7 @@ export default function App() {
             activeTab={activeTab}
             onTabChange={setActiveTab}
             onRemoveQuestion={handleRemoveQuestion}
+            onMoveQuestion={handleMoveQuestion}
             bankQuestions={library.questions}
             onAddQuestions={handleAddQuestionsToCurrentAssessment}
             onUpdateQuestion={handleUpdateQuestion}

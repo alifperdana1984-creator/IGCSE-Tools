@@ -4,7 +4,7 @@ import remarkMath from 'remark-math'
 import remarkGfm from 'remark-gfm'
 import rehypeKatex from 'rehype-katex'
 import rehypeRaw from 'rehype-raw'
-import { Download, Copy, Save, Edit3, BookmarkPlus, X, Plus, Check, Pencil } from 'lucide-react'
+import { Download, Copy, Save, Edit3, BookmarkPlus, X, Plus, Check, Pencil, ChevronUp, ChevronDown, Calendar } from 'lucide-react'
 import type { Assessment, Question, QuestionItem } from '../../lib/types'
 import { parseSVGSafe } from '../../lib/svg'
 import { exportToPDF } from '../../lib/pdf'
@@ -24,6 +24,7 @@ interface Props {
   activeTab: 'questions' | 'answerKey' | 'markScheme'
   onTabChange: (tab: 'questions' | 'answerKey' | 'markScheme') => void
   onRemoveQuestion?: (questionId: string) => void
+  onMoveQuestion?: (questionId: string, direction: 'up' | 'down') => void
   bankQuestions?: Question[]
   onAddQuestions?: (questions: QuestionItem[]) => void
   onUpdateQuestion?: (questionId: string, updates: { text?: string; answer?: string; markScheme?: string }) => void
@@ -45,7 +46,7 @@ function QuestionMarkdown({ content }: { content: string }) {
                   <span className="w-1.5 h-1.5 rounded-full bg-violet-300 inline-block" />
                   Diagram
                 </p>
-                <div dangerouslySetInnerHTML={{ __html: safe }} style={{ fontSize: '0.85em' }} />
+                <div dangerouslySetInnerHTML={{ __html: safe }} style={{ fontSize: '0.85em', maxWidth: '480px' }} />
               </div>
             )
             return <span className="text-stone-400 text-xs italic">[Diagram unavailable]</span>
@@ -127,11 +128,17 @@ function BankPickerModal({
   )
 }
 
+function formatDateTime(ts: import('firebase/firestore').Timestamp): string {
+  const d = ts.toDate()
+  return d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })
+    + ' · ' + d.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })
+}
+
 export function AssessmentView({
   assessment, analysisText, isEditing, studentMode,
   onEdit, onCancelEdit, onSave, onSaveToLibrary, onStudentFeedback, onCopy,
   activeTab, onTabChange,
-  onRemoveQuestion, bankQuestions, onAddQuestions, onUpdateQuestion,
+  onRemoveQuestion, onMoveQuestion, bankQuestions, onAddQuestions, onUpdateQuestion,
 }: Props) {
   const contentRef = useRef<HTMLDivElement>(null)
   const [studentAnswers, setStudentAnswers] = useState<string[]>([])
@@ -226,6 +233,16 @@ export function AssessmentView({
         </div>
       </div>
 
+      {/* Assessment meta */}
+      <div className="px-4 py-1.5 border-b border-stone-100 flex items-center gap-3 text-xs text-stone-400 bg-stone-50/60">
+        <span className="font-medium text-stone-600">{assessment.subject} · {assessment.topic}</span>
+        <span>{assessment.difficulty}</span>
+        <span className="flex items-center gap-1 ml-auto">
+          <Calendar className="w-3 h-3" />
+          {formatDateTime(assessment.createdAt)}
+        </span>
+      </div>
+
       {/* Content */}
       <div className="flex-1 overflow-y-auto p-4 markdown-body" ref={contentRef}>
         {analysisText && (
@@ -298,6 +315,26 @@ export function AssessmentView({
                         >
                           <Pencil className="w-3.5 h-3.5" />
                         </button>
+                      )}
+                      {onMoveQuestion && !studentMode && (
+                        <div className="flex opacity-0 group-hover:opacity-100 transition-opacity">
+                          <button
+                            onClick={() => onMoveQuestion(q.id, 'up')}
+                            disabled={i === 0}
+                            className="p-0.5 text-stone-400 hover:text-stone-700 disabled:opacity-30"
+                            title="Move up"
+                          >
+                            <ChevronUp className="w-3.5 h-3.5" />
+                          </button>
+                          <button
+                            onClick={() => onMoveQuestion(q.id, 'down')}
+                            disabled={i === assessment.questions.length - 1}
+                            className="p-0.5 text-stone-400 hover:text-stone-700 disabled:opacity-30"
+                            title="Move down"
+                          >
+                            <ChevronDown className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
                       )}
                       {onRemoveQuestion && !studentMode && (
                         <button
