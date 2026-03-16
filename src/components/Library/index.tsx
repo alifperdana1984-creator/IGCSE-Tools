@@ -7,6 +7,7 @@ import rehypeRaw from 'rehype-raw'
 import { Folder as FolderIcon, Trash2, Plus, Library as LibraryIcon, Pencil, X, Check, Eye, FilePlus, FolderPlus, Loader2, Calendar, Globe } from 'lucide-react'
 import type { Assessment, Question, Folder } from '../../lib/types'
 import { parseSVGSafe } from '../../lib/svg'
+import { preprocessLatex } from '../../lib/latex'
 import { RichEditor } from '../RichEditor'
 
 interface Props {
@@ -53,18 +54,6 @@ const svgComponents = {
   }
 }
 
-/**
- * Wraps bare LaTeX commands in $...$ so KaTeX can render them.
- * Handles: \frac, \sqrt, \sum, \int, \times, etc. that appear outside existing delimiters.
- */
-function preprocessLatex(text: string): string {
-  // Don't double-wrap already-delimited math
-  // Replace bare \command{...}{...} patterns not already inside $...$
-  return text.replace(
-    /(?<!\$)(?<!\$\$)(\\(?:frac|sqrt|sum|int|prod|lim|infty|partial|Delta|alpha|beta|gamma|delta|epsilon|theta|lambda|mu|pi|sigma|phi|omega|times|div|pm|leq|geq|neq|approx|cdot|ldots|vec|hat|bar|overline|underline|left|right|mathbf|mathrm|text)\b(?:\{[^}]*\})*(?:\{[^}]*\})*)(?!\$)/g,
-    '$$$1$$$'
-  )
-}
 
 function QMarkdown({ content }: { content: string }) {
   return (

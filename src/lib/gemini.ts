@@ -148,7 +148,7 @@ Rules:
 2. Each question must have: text (markdown, bold), answer, markScheme, marks (integer), commandWord, type (mcq/short_answer/structured), hasDiagram (boolean).
 3. For diagrams, include SVG inside the 'text' field as \`\`\`svg ... \`\`\` using camelCase attributes.
 4. CRITICAL: ALL mathematical expressions, variables, equations, and formulas MUST be wrapped in LaTeX inline delimiters: $x^2$, $3x^2 - 5x + 2 = 0$, $\frac{a}{b}$, $H_2O$. NEVER write math as plain text.
-5. FOR MCQ QUESTIONS: The "text" field must end with the 4 options on separate lines: "\\n\\nA) ...\\n\\nB) ...\\n\\nC) ...\\n\\nD) ...". The "answer" field must be ONLY "A", "B", "C", or "D".
+5. FOR MCQ QUESTIONS: The "text" field MUST include the question followed by exactly 4 text-based options (no graphs or diagrams as options). Format: question text, then a blank line, then each option on its own line: "A) option" then blank line, "B) option" then blank line, "C) option" then blank line, "D) option". The "answer" field must be ONLY the letter "A", "B", "C", or "D". If 4 text-based options cannot be written, use short_answer instead.
 6. Add **Syllabus Reference:** at end of each question text.`
 
   const parts: any[] = []

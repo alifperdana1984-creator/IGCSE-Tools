@@ -8,6 +8,7 @@ import { Download, Copy, Save, Edit3, BookmarkPlus, X, Plus, Check, Pencil, Chev
 import type { Assessment, Question, QuestionItem } from '../../lib/types'
 import { parseSVGSafe } from '../../lib/svg'
 import { exportToPDF } from '../../lib/pdf'
+import { preprocessLatex } from '../../lib/latex'
 import { RichEditor } from '../RichEditor'
 
 interface Props {
@@ -55,7 +56,7 @@ function QuestionMarkdown({ content }: { content: string }) {
         }
       }}
     >
-      {content}
+      {preprocessLatex(content)}
     </ReactMarkdown>
   )
 }
