@@ -195,6 +195,15 @@ export const deleteFolder = async (id: string) => {
   }
 };
 
+export const updateFolder = async (id: string, name: string) => {
+  const docRef = doc(db, 'folders', id);
+  try {
+    return await updateDoc(docRef, { name });
+  } catch (error) {
+    handleFirestoreError(error, OperationType.UPDATE, `folders/${id}`);
+  }
+};
+
 export const saveResource = async (
   file: { name: string; data: ArrayBuffer; mimeType: string },
   subject: string

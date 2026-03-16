@@ -103,7 +103,15 @@ ${config.syllabusContext ? `Syllabus Context: ${config.syllabusContext}` : ''}
 Rules:
 1. Generate EXACTLY ${config.count} questions.
 2. CRITICAL: ALL mathematical expressions, variables, equations, and formulas MUST be wrapped in LaTeX inline delimiters: $x^2$, $3x^2 - 5x + 2 = 0$, $\frac{a}{b}$, $H_2O$. NEVER write math as plain text.
-3. For MCQ: put options A/B/C/D each on new line with double newlines between them.
+3. CRITICAL FOR MCQ: If type is "mcq", the question "text" field MUST include 4 labelled options formatted as:
+   A) option text
+
+   B) option text
+
+   C) option text
+
+   D) option text
+   The correct answer in "answer" field must be "A", "B", "C", or "D" only.
 4. Add **Syllabus Reference:** at end of each question text.
 
 Respond with ONLY this JSON structure (no other text):

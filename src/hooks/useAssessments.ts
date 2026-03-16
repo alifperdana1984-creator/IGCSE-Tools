@@ -17,6 +17,7 @@ import {
   createFolder as fbCreateFolder,
   getFolders,
   deleteFolder as fbDeleteFolder,
+  updateFolder as fbUpdateFolder,
 } from '../lib/firebase'
 
 export function useAssessments(user: User | null, notify: NotifyFn) {
@@ -170,11 +171,20 @@ export function useAssessments(user: User | null, notify: NotifyFn) {
     }
   }, [notify])
 
+  const renameFolder = useCallback(async (id: string, name: string) => {
+    try {
+      await fbUpdateFolder(id, name)
+      setFolders(f => f.map(x => x.id === id ? { ...x, name } : x))
+    } catch (e) {
+      notify('Failed to rename folder', 'error')
+    }
+  }, [notify])
+
   return {
     assessments, questions, folders, loading,
     loadAll, saveAssessment, saveQuestions,
     deleteAssessment, updateAssessment, moveAssessment,
     deleteQuestion, updateQuestion, moveQuestion,
-    createFolder, deleteFolder,
+    createFolder, deleteFolder, renameFolder,
   }
 }

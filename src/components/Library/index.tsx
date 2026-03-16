@@ -22,6 +22,7 @@ interface Props {
   onMoveQuestion: (id: string, folderId: string | null) => void
   onCreateFolder: (name: string) => void
   onDeleteFolder: (id: string) => void
+  onRenameFolder: (id: string, name: string) => void
   selectedFolderId: string | null | undefined
   onSelectFolder: (id: string | null | undefined) => void
   onCreateAssessmentFromQuestions: (questions: Question[]) => void
@@ -199,7 +200,7 @@ export function Library({
   assessments, questions, folders, loading,
   onSelect, onDeleteAssessment, onMoveAssessment, onRenameAssessment,
   onDeleteQuestion, onMoveQuestion,
-  onCreateFolder, onDeleteFolder,
+  onCreateFolder, onDeleteFolder, onRenameFolder,
   selectedFolderId, onSelectFolder,
   onCreateAssessmentFromQuestions, onAddQuestionsToAssessment,
   onUpdateQuestion,
@@ -208,6 +209,8 @@ export function Library({
   const [newFolderName, setNewFolderName] = useState('')
   const [renamingId, setRenamingId] = useState<string | null>(null)
   const [renameValue, setRenameValue] = useState('')
+  const [renamingFolderId, setRenamingFolderId] = useState<string | null>(null)
+  const [renameFolderValue, setRenameFolderValue] = useState('')
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
   const [previewQuestion, setPreviewQuestion] = useState<Question | null>(null)
   const [addToAssessmentId, setAddToAssessmentId] = useState('')
@@ -297,18 +300,47 @@ export function Library({
         </button>
         {folders.map(f => (
           <div key={f.id} className="flex items-center gap-1 group">
-            <button
-              onClick={() => onSelectFolder(f.id)}
-              className={`flex-1 text-left text-xs px-2 py-1.5 rounded flex items-center gap-1 ${selectedFolderId === f.id ? 'bg-emerald-100 text-emerald-800 font-medium' : 'hover:bg-stone-100 text-stone-600'}`}
-            >
-              <FolderIcon className="w-3.5 h-3.5" /> {f.name}
-            </button>
-            <button
-              onClick={() => setConfirmDelete({ type: 'folder', id: f.id, label: f.name })}
-              className="opacity-0 group-hover:opacity-100 p-0.5 text-red-400 hover:text-red-600"
-            >
-              <Trash2 className="w-3 h-3" />
-            </button>
+            {renamingFolderId === f.id ? (
+              <>
+                <input
+                  value={renameFolderValue}
+                  onChange={e => setRenameFolderValue(e.target.value)}
+                  className="flex-1 text-xs px-1.5 py-1 border border-emerald-400 rounded min-w-0"
+                  autoFocus
+                  onKeyDown={e => {
+                    if (e.key === 'Enter' && renameFolderValue.trim()) {
+                      onRenameFolder(f.id, renameFolderValue.trim())
+                      setRenamingFolderId(null)
+                    }
+                    if (e.key === 'Escape') setRenamingFolderId(null)
+                  }}
+                />
+                <button onClick={() => { if (renameFolderValue.trim()) { onRenameFolder(f.id, renameFolderValue.trim()); setRenamingFolderId(null) } }} className="text-emerald-600 shrink-0"><Check className="w-3.5 h-3.5" /></button>
+                <button onClick={() => setRenamingFolderId(null)} className="text-stone-400 shrink-0"><X className="w-3.5 h-3.5" /></button>
+              </>
+            ) : (
+              <>
+                <button
+                  onClick={() => onSelectFolder(f.id)}
+                  className={`flex-1 text-left text-xs px-2 py-1.5 rounded flex items-center gap-1 min-w-0 ${selectedFolderId === f.id ? 'bg-emerald-100 text-emerald-800 font-medium' : 'hover:bg-stone-100 text-stone-600'}`}
+                >
+                  <FolderIcon className="w-3.5 h-3.5 shrink-0" />
+                  <span className="truncate">{f.name}</span>
+                </button>
+                <button
+                  onClick={() => { setRenamingFolderId(f.id); setRenameFolderValue(f.name) }}
+                  className="opacity-0 group-hover:opacity-100 p-0.5 text-stone-400 hover:text-stone-600 shrink-0"
+                >
+                  <Pencil className="w-3 h-3" />
+                </button>
+                <button
+                  onClick={() => setConfirmDelete({ type: 'folder', id: f.id, label: f.name })}
+                  className="opacity-0 group-hover:opacity-100 p-0.5 text-red-400 hover:text-red-600 shrink-0"
+                >
+                  <Trash2 className="w-3 h-3" />
+                </button>
+              </>
+            )}
           </div>
         ))}
       </div>
@@ -469,9 +501,14 @@ export function Library({
                         .replace(/\*\*/g, '')
                         .substring(0, 120)}...
                       </div>
-                      <div className="text-xs text-stone-400 mt-0.5">
-                        {q.subject} · {q.marks}m · {q.commandWord}
-                        {q.code && <span className="ml-1 font-mono bg-stone-100 px-1 rounded text-stone-500">{q.code}</span>}
+                      <div className="text-xs text-stone-400 mt-0.5 flex items-center gap-1 flex-wrap">
+                        <span>{q.subject} · {q.marks}m · {q.commandWord}</span>
+                        <span className={`px-1.5 py-0.5 rounded text-xs font-medium ${
+                          q.type === 'mcq' ? 'bg-blue-100 text-blue-700' :
+                          q.type === 'structured' ? 'bg-violet-100 text-violet-700' :
+                          'bg-stone-100 text-stone-500'
+                        }`}>{q.type === 'mcq' ? 'MCQ' : q.type === 'structured' ? 'Structured' : 'Short Answer'}</span>
+                        {q.code && <span className="font-mono bg-stone-100 px-1 rounded text-stone-500">{q.code}</span>}
                       </div>
                     </div>
 
