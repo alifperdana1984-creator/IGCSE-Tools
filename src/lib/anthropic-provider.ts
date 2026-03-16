@@ -102,7 +102,7 @@ ${config.syllabusContext ? `Syllabus Context: ${config.syllabusContext}` : ''}
 
 Rules:
 1. Generate EXACTLY ${config.count} questions.
-2. Use LaTeX for math ($H_2O$, $x^2$).
+2. CRITICAL: ALL mathematical expressions, variables, equations, and formulas MUST be wrapped in LaTeX inline delimiters: $x^2$, $3x^2 - 5x + 2 = 0$, $\frac{a}{b}$, $H_2O$. NEVER write math as plain text.
 3. For MCQ: put options A/B/C/D each on new line with double newlines between them.
 4. Add **Syllabus Reference:** at end of each question text.
 

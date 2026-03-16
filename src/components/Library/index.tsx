@@ -4,7 +4,7 @@ import remarkMath from 'remark-math'
 import remarkGfm from 'remark-gfm'
 import rehypeKatex from 'rehype-katex'
 import rehypeRaw from 'rehype-raw'
-import { Folder as FolderIcon, Trash2, Plus, Library as LibraryIcon, Pencil, X, Check, Eye, FilePlus, FolderPlus } from 'lucide-react'
+import { Folder as FolderIcon, Trash2, Plus, Library as LibraryIcon, Pencil, X, Check, Eye, FilePlus, FolderPlus, Loader2, Calendar } from 'lucide-react'
 import type { Assessment, Question, Folder } from '../../lib/types'
 import { parseSVGSafe } from '../../lib/svg'
 import { RichEditor } from '../RichEditor'
@@ -157,10 +157,11 @@ function QuestionPreviewModal({
 
 type DeleteTarget = { type: 'assessment' | 'question' | 'folder'; id: string; label: string }
 
-function ConfirmDeleteModal({ target, onConfirm, onCancel }: {
+function ConfirmDeleteModal({ target, onConfirm, onCancel, isDeleting }: {
   target: DeleteTarget
   onConfirm: () => void
   onCancel: () => void
+  isDeleting?: boolean
 }) {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={onCancel}>
@@ -171,7 +172,10 @@ function ConfirmDeleteModal({ target, onConfirm, onCancel }: {
         </p>
         <div className="flex justify-end gap-2">
           <button onClick={onCancel} className="px-3 py-1.5 text-xs bg-stone-100 text-stone-600 rounded-lg font-medium hover:bg-stone-200">Cancel</button>
-          <button onClick={onConfirm} className="px-3 py-1.5 text-xs bg-red-600 text-white rounded-lg font-medium hover:bg-red-700">Delete</button>
+          <button onClick={onConfirm} disabled={isDeleting} className="px-3 py-1.5 text-xs bg-red-600 text-white rounded-lg font-medium hover:bg-red-700 disabled:opacity-60 flex items-center gap-1.5">
+            {isDeleting && <Loader2 className="w-3 h-3 animate-spin" />}
+            Delete
+          </button>
         </div>
       </div>
     </div>
@@ -195,13 +199,19 @@ export function Library({
   const [previewQuestion, setPreviewQuestion] = useState<Question | null>(null)
   const [addToAssessmentId, setAddToAssessmentId] = useState('')
   const [confirmDelete, setConfirmDelete] = useState<DeleteTarget | null>(null)
+  const [isDeleting, setIsDeleting] = useState(false)
 
-  const handleConfirmDelete = () => {
+  const handleConfirmDelete = async () => {
     if (!confirmDelete) return
-    if (confirmDelete.type === 'assessment') onDeleteAssessment(confirmDelete.id)
-    else if (confirmDelete.type === 'question') onDeleteQuestion(confirmDelete.id)
-    else if (confirmDelete.type === 'folder') onDeleteFolder(confirmDelete.id)
-    setConfirmDelete(null)
+    setIsDeleting(true)
+    try {
+      if (confirmDelete.type === 'assessment') await onDeleteAssessment(confirmDelete.id)
+      else if (confirmDelete.type === 'question') await onDeleteQuestion(confirmDelete.id)
+      else if (confirmDelete.type === 'folder') await onDeleteFolder(confirmDelete.id)
+    } finally {
+      setIsDeleting(false)
+      setConfirmDelete(null)
+    }
   }
 
   const toggleSelect = (id: string) => {
@@ -357,7 +367,15 @@ export function Library({
                             <span className="text-sm font-medium text-stone-800">{a.topic}</span>
                             {a.code && <span className="text-xs font-mono bg-stone-100 text-stone-500 px-1.5 py-0.5 rounded">{a.code}</span>}
                           </div>
-                          <div className="text-xs text-stone-500">{a.subject} · {a.difficulty} · {a.questions.length}q</div>
+                          <div className="text-xs text-stone-500 flex items-center gap-1.5 flex-wrap">
+                            <span>{a.subject} · {a.difficulty} · {a.questions.length}q</span>
+                            <span className="flex items-center gap-1 text-stone-400">
+                              <Calendar className="w-3 h-3" />
+                              {a.createdAt.toDate().toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}
+                              {' · '}
+                              {a.createdAt.toDate().toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}
+                            </span>
+                          </div>
                         </button>
                       )}
                     </div>
@@ -456,6 +474,7 @@ export function Library({
           target={confirmDelete}
           onConfirm={handleConfirmDelete}
           onCancel={() => setConfirmDelete(null)}
+          isDeleting={isDeleting}
         />
       )}
 

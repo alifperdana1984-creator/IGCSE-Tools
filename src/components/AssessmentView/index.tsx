@@ -4,7 +4,7 @@ import remarkMath from 'remark-math'
 import remarkGfm from 'remark-gfm'
 import rehypeKatex from 'rehype-katex'
 import rehypeRaw from 'rehype-raw'
-import { Download, Copy, Save, Edit3, BookmarkPlus, X, Plus, Check, Pencil, ChevronUp, ChevronDown, Calendar } from 'lucide-react'
+import { Download, Copy, Save, Edit3, BookmarkPlus, X, Plus, Check, Pencil, ChevronUp, ChevronDown, Calendar, Loader2 } from 'lucide-react'
 import type { Assessment, Question, QuestionItem } from '../../lib/types'
 import { parseSVGSafe } from '../../lib/svg'
 import { exportToPDF } from '../../lib/pdf'
@@ -147,6 +147,9 @@ export function AssessmentView({
   const [showPicker, setShowPicker] = useState(false)
   const [editingQId, setEditingQId] = useState<string | null>(null)
   const [editDraft, setEditDraft] = useState<{ text: string; answer: string; markScheme: string }>({ text: '', answer: '', markScheme: '' })
+  const [isSaving, setIsSaving] = useState(false)
+  const [isDownloading, setIsDownloading] = useState(false)
+  const [isFeedbackLoading, setIsFeedbackLoading] = useState(false)
 
   if (!assessment) {
     return (
@@ -161,9 +164,19 @@ export function AssessmentView({
 
   const handleDownloadPDF = async () => {
     if (!contentRef.current) return
-    const filename = `${assessment.subject}-${assessment.topic}-assessment.pdf`
-      .replace(/\s+/g, '-').toLowerCase()
-    await exportToPDF(contentRef.current, filename)
+    setIsDownloading(true)
+    try {
+      const filename = `${assessment.subject}-${assessment.topic}-assessment.pdf`
+        .replace(/\s+/g, '-').toLowerCase()
+      await exportToPDF(contentRef.current, filename)
+    } finally {
+      setIsDownloading(false)
+    }
+  }
+
+  const handleSave = async () => {
+    setIsSaving(true)
+    try { await onSaveToLibrary() } finally { setIsSaving(false) }
   }
 
   const questionsText = assessment.questions
@@ -207,14 +220,15 @@ export function AssessmentView({
               <Plus className="w-3.5 h-3.5" /> Add
             </button>
           )}
-          <button onClick={onSaveToLibrary} className="px-3 py-1.5 text-xs bg-emerald-600 text-white rounded-lg font-medium flex items-center gap-1 hover:bg-emerald-700">
-            <BookmarkPlus className="w-3.5 h-3.5" /> Save
+          <button onClick={handleSave} disabled={isSaving} className="px-3 py-1.5 text-xs bg-emerald-600 text-white rounded-lg font-medium flex items-center gap-1 hover:bg-emerald-700 disabled:opacity-60">
+            {isSaving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <BookmarkPlus className="w-3.5 h-3.5" />}
+            Save
           </button>
           <button onClick={() => onCopy(currentText)} className="p-1.5 text-stone-500 hover:bg-stone-100 rounded" title="Copy">
             <Copy className="w-4 h-4" />
           </button>
-          <button onClick={handleDownloadPDF} className="p-1.5 text-stone-500 hover:bg-stone-100 rounded" title="Download PDF">
-            <Download className="w-4 h-4" />
+          <button onClick={handleDownloadPDF} disabled={isDownloading} className="p-1.5 text-stone-500 hover:bg-stone-100 rounded disabled:opacity-60" title="Download PDF">
+            {isDownloading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />}
           </button>
           {isEditing ? (
             <>
@@ -384,13 +398,20 @@ export function AssessmentView({
         {studentMode && onStudentFeedback && (
           <div className="mt-4">
             <button
+              disabled={isFeedbackLoading}
               onClick={async () => {
-                const fb = await onStudentFeedback(studentAnswers)
-                if (fb) setFeedback(fb)
+                setIsFeedbackLoading(true)
+                try {
+                  const fb = await onStudentFeedback(studentAnswers)
+                  if (fb) setFeedback(fb)
+                } finally {
+                  setIsFeedbackLoading(false)
+                }
               }}
-              className="px-4 py-2 bg-emerald-600 text-white text-sm rounded-lg font-medium"
+              className="px-4 py-2 bg-emerald-600 text-white text-sm rounded-lg font-medium flex items-center gap-2 disabled:opacity-60"
             >
-              Get Feedback
+              {isFeedbackLoading && <Loader2 className="w-4 h-4 animate-spin" />}
+              {isFeedbackLoading ? 'Generating feedback...' : 'Get Feedback'}
             </button>
             {feedback && (
               <div className="mt-4 p-3 bg-stone-50 border border-stone-200 rounded-lg">
