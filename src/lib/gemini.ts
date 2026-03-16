@@ -329,7 +329,14 @@ When generating SVG diagrams:
   const raw = safeJsonParse(response.text || '{}') as { questions: Omit<QuestionItem, 'id'>[] }
   let questions: QuestionItem[] = (raw.questions ?? []).map(q => {
     const sanitized = sanitizeQuestion(q)
-    return { ...sanitized, id: crypto.randomUUID(), code: sharedGenerateQuestionCode(config.subject, sanitized.text) }
+    return {
+      ...sanitized,
+      id: crypto.randomUUID(),
+      code: sharedGenerateQuestionCode(config.subject, {
+        text: sanitized.text,
+        syllabusObjective: sanitized.syllabusObjective,
+      }),
+    }
   })
 
   if (config.difficulty === 'Challenging' && questions.length > 0) {
@@ -410,7 +417,10 @@ TASK:
     return {
       ...sanitized,
       id: existing?.id ?? crypto.randomUUID(),
-      code: existing?.code ?? sharedGenerateQuestionCode(subject, sanitized.text),
+      code: existing?.code ?? sharedGenerateQuestionCode(subject, {
+        text: sanitized.text,
+        syllabusObjective: sanitized.syllabusObjective,
+      }),
     }
   })
 }
@@ -438,7 +448,7 @@ AUDIT CRITERIA:
 1. **Command Words**: Ensure words like "Describe", "Explain", "Suggest" are used correctly according to IGCSE definitions.
 2. **Mark Allocation**: Ensure the mark scheme points match the cognitive demand of the question.
 3. **Accuracy**: Check for any scientific or mathematical errors.
-4. **Formatting**: Ensure bold question text, double newlines for MCQ options, and bold Syllabus References.
+4. **Formatting**: Ensure clean markdown question text and consistent MCQ option spacing. Do NOT add a separate Syllabus Reference line.
 5. **SVG Diagrams**: Ensure SVG diagrams use camelCase attributes.
 
 If you find errors, fix them and return the ENTIRE corrected assessment.
@@ -481,7 +491,10 @@ If the assessment is perfect, return it as is.`
     return {
       ...sanitized,
       id: existing?.id ?? crypto.randomUUID(),
-      code: existing?.code ?? sharedGenerateQuestionCode(assessment.subject, sanitized.text),
+      code: existing?.code ?? sharedGenerateQuestionCode(assessment.subject, {
+        text: sanitized.text,
+        syllabusObjective: sanitized.syllabusObjective,
+      }),
     }
   })
 }
@@ -582,7 +595,7 @@ export async function analyzeFile(
 2. Generate EXACTLY ${count} similar questions with the same concept but different context.
 3. For Science subjects, include SVG diagrams if appropriate. Use \`\`\`svg ... \`\`\` code blocks and **camelCase** attributes.
 4. Each question must have: text, answer, markScheme, marks, commandWord, type (mcq/short_answer/structured), hasDiagram.
-5. **FORMATTING**: Bold question text, double newlines for MCQ options, bold Syllabus Reference at end.`
+5. **FORMATTING**: Use clean markdown with clear spacing for options. Do NOT append a separate Syllabus Reference line.`
 
   const parts: any[] = references && references.length > 0
     ? buildReferenceParts(references)
@@ -638,7 +651,14 @@ Use SVG for any diagrams using **camelCase** attributes.`,
     analysis: raw.analysis ?? '',
     questions: (raw.questions ?? []).map((q: any) => {
       const sanitized = sanitizeQuestion(q)
-      return { ...sanitized, id: crypto.randomUUID(), code: sharedGenerateQuestionCode(subject, sanitized.text) }
+      return {
+        ...sanitized,
+        id: crypto.randomUUID(),
+        code: sharedGenerateQuestionCode(subject, {
+          text: sanitized.text,
+          syllabusObjective: sanitized.syllabusObjective,
+        }),
+      }
     }),
   }
 }

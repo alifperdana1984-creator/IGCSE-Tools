@@ -1,6 +1,7 @@
 import { useState, useCallback } from 'react'
 import type { Assessment, QuestionItem, AnalyzeFileResult, GenerationConfig, AIError, Resource } from '../lib/types'
 import type { AIProvider } from '../lib/providers'
+import { DEFAULT_AUDIT_MODELS } from '../lib/providers'
 import type { NotifyFn } from './useNotifications'
 import { generateTest, auditTest, getStudentFeedback as aiFeedback, analyzeFile as aiAnalyze } from '../lib/ai'
 import { uploadToGeminiFileApi } from '../lib/gemini'
@@ -9,6 +10,40 @@ import { Timestamp } from 'firebase/firestore'
 import { auth } from '../lib/firebase'
 
 const GEMINI_URI_VALID_MS = 46 * 60 * 60 * 1000
+
+function formatPastPaperText(cache: {
+  examples?: string
+  summary?: string
+  items?: Array<{
+    questionText: string
+    commandWord: string
+    marks: number
+    markScheme: string
+    questionType?: string
+    difficultyBand?: string
+    topic?: string
+  }>
+}): string {
+  if (cache.items && cache.items.length > 0) {
+    const lines = cache.items
+      .slice(0, 40)
+      .map((item, i) =>
+        `Example ${i + 1}\n` +
+        `Question: ${item.questionText}\n` +
+        `Command Word: ${item.commandWord}\n` +
+        `Marks: ${item.marks}\n` +
+        `${item.questionType ? `Type: ${item.questionType}\n` : ''}` +
+        `${item.difficultyBand ? `Difficulty: ${item.difficultyBand}\n` : ''}` +
+        `${item.topic ? `Topic: ${item.topic}\n` : ''}` +
+        `Mark Scheme: ${item.markScheme}`
+      )
+      .join('\n\n')
+    return cache.summary?.trim()
+      ? `STYLE SUMMARY:\n${cache.summary.trim()}\n\n${lines}`
+      : lines
+  }
+  return (cache.examples ?? '').trim()
+}
 
 async function buildReferences(
   knowledgeBaseResources: Resource[],
@@ -51,8 +86,11 @@ async function buildReferences(
         if (r.resourceType === 'past_paper') {
           try {
             const cache = await getPastPaperCache(r.id)
-            if (cache && cache.examples.length > 100) {
-              return { data: '', mimeType: r.mimeType, resourceType: 'past_paper', name: r.name, pastPaperText: cache.examples }
+            if (cache) {
+              const pastPaperText = formatPastPaperText(cache)
+              if (pastPaperText.length > 100) {
+                return { data: '', mimeType: r.mimeType, resourceType: 'past_paper', name: r.name, pastPaperText }
+              }
             }
           } catch { /* fall through to file upload */ }
         }
@@ -90,8 +128,11 @@ async function buildReferences(
       if (r.resourceType === 'past_paper') {
         try {
           const cache = await getPastPaperCache(r.id)
-          if (cache && cache.examples.length > 100) {
-            return { data: '', mimeType: r.mimeType, resourceType: 'past_paper', name: r.name, pastPaperText: cache.examples }
+          if (cache) {
+            const pastPaperText = formatPastPaperText(cache)
+            if (pastPaperText.length > 100) {
+              return { data: '', mimeType: r.mimeType, resourceType: 'past_paper', name: r.name, pastPaperText }
+            }
           }
         } catch { /* fall through */ }
       }
@@ -139,14 +180,19 @@ export function useGeneration(
         userId: auth.currentUser?.uid ?? '',
         createdAt: Timestamp.now(),
       }
-      // Audit step only for Gemini — Anthropic/OpenAI already produce clean JSON
-      // and extra calls burn through per-minute rate limits
       let auditedQuestions = questions
-      if (config.provider === 'gemini') {
-        setIsAuditing(true)
-        notify('Auditing assessment quality...', 'info')
-        await new Promise(r => setTimeout(r, 3000))
-        auditedQuestions = await auditTest(config.subject, draft, config.model, config.provider, apiKey)
+      setIsAuditing(true)
+      const preferredAuditModel = DEFAULT_AUDIT_MODELS[config.provider] ?? config.model
+      notify(`Auditing assessment quality (${preferredAuditModel})...`, 'info')
+      try {
+        auditedQuestions = await auditTest(config.subject, draft, preferredAuditModel, config.provider, apiKey)
+      } catch (e: any) {
+        if (preferredAuditModel !== config.model) {
+          notify(`Audit model unavailable, retrying with ${config.model}...`, 'info')
+          auditedQuestions = await auditTest(config.subject, draft, config.model, config.provider, apiKey)
+        } else {
+          throw e
+        }
       }
       setGeneratedAssessment({ ...draft, questions: auditedQuestions })
       notify('Assessment generated successfully!', 'success')

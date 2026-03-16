@@ -74,10 +74,23 @@ export interface SyllabusCache {
   processedAt: Timestamp
 }
 
+export interface PastPaperExample {
+  questionText: string
+  commandWord: string
+  marks: number
+  markScheme: string
+  questionType?: string
+  difficultyBand?: 'easy' | 'medium' | 'challenging'
+  topic?: string
+}
+
 export interface PastPaperCache {
   resourceId: string
   subject: string
-  examples: string   // extracted Q&A examples as plain text
+  examples?: string   // legacy plain text cache
+  items?: PastPaperExample[] // structured examples for better style transfer
+  summary?: string
+  version?: number
   processedAt: Timestamp
 }
 

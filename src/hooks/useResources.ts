@@ -183,7 +183,7 @@ export function useResources(user: User | null, notify: NotifyFn) {
   const processPastPaper = useCallback(async (resource: Resource, apiKey: string): Promise<void> => {
     try {
       const existing = await getPastPaperCache(resource.id)
-      if (existing) return
+      if (existing && ((existing.items && existing.items.length >= 10) || (existing.examples && existing.examples.length > 100))) return
     } catch { return }
     setProcessingIds(s => new Set(s).add(resource.id))
 
@@ -201,21 +201,74 @@ export function useResources(user: User | null, notify: NotifyFn) {
           contents: {
             parts: [
               { inlineData: { mimeType: resource.mimeType, data: base64 } },
-              { text: `This is a Cambridge IGCSE ${resource.subject} past paper. Extract 8–12 representative question-and-answer examples that best demonstrate the style, phrasing, difficulty, and mark scheme format of this paper. For each example include: the question text, the command word used, the number of marks, and the mark scheme answer. Format as plain text. These examples will be used as style references for generating new questions — do not include full paper context, just the representative Q&A pairs.` },
+              { text: `This is a Cambridge IGCSE ${resource.subject} past paper. Extract 30-40 representative question-and-answer examples spanning easy, medium, and challenging difficulty.
+Return structured JSON only with:
+- summary: short style summary
+- items: array where each item has questionText, commandWord, marks, markScheme, questionType, difficultyBand, topic.
+Focus on authentic command words, mark allocation patterns, and wording style. Keep each item concise.` },
             ]
           },
           config: {
-            responseMimeType: 'text/plain',
-            maxOutputTokens: 4096,
+            responseMimeType: 'application/json',
+            maxOutputTokens: 8192,
+            responseSchema: {
+              type: Type.OBJECT,
+              properties: {
+                summary: { type: Type.STRING, nullable: true },
+                items: {
+                  type: Type.ARRAY,
+                  items: {
+                    type: Type.OBJECT,
+                    properties: {
+                      questionText: { type: Type.STRING },
+                      commandWord: { type: Type.STRING, nullable: true },
+                      marks: { type: Type.NUMBER, nullable: true },
+                      markScheme: { type: Type.STRING },
+                      questionType: { type: Type.STRING, nullable: true },
+                      difficultyBand: { type: Type.STRING, nullable: true },
+                      topic: { type: Type.STRING, nullable: true },
+                    },
+                    required: ['questionText', 'markScheme'],
+                  },
+                },
+              },
+              required: ['items'],
+            },
           },
         }),
         PROCESSING_TIMEOUT_MS,
         'Past paper processing'
       )
-      const examples = (response.text || '').trim()
-      if (examples.length > 100) {
-        await savePastPaperCache(resource.id, resource.subject, examples)
-        notify(`Past paper "${resource.name}" processed — style examples cached`, 'success')
+      const parsed = JSON.parse(response.text || '{}') as {
+        summary?: string
+        items?: Array<{
+          questionText?: string
+          commandWord?: string
+          marks?: number
+          markScheme?: string
+          questionType?: string
+          difficultyBand?: 'easy' | 'medium' | 'challenging'
+          topic?: string
+        }>
+      }
+      const items = (parsed.items ?? [])
+        .filter(x => (x.questionText ?? '').trim().length > 20 && (x.markScheme ?? '').trim().length > 10)
+        .map(x => ({
+          questionText: (x.questionText ?? '').trim(),
+          commandWord: (x.commandWord ?? '').trim() || 'Unknown',
+          marks: Number.isFinite(x.marks as number) ? Math.max(1, Math.round(Number(x.marks))) : 1,
+          markScheme: (x.markScheme ?? '').trim(),
+          ...(x.questionType ? { questionType: String(x.questionType).trim() } : {}),
+          ...(x.difficultyBand ? { difficultyBand: x.difficultyBand } : {}),
+          ...(x.topic ? { topic: String(x.topic).trim() } : {}),
+        }))
+      if (items.length >= 10) {
+        await savePastPaperCache(resource.id, resource.subject, {
+          items,
+          summary: parsed.summary?.trim() || undefined,
+          version: 2,
+        })
+        notify(`Past paper "${resource.name}" processed � ${items.length} structured examples cached`, 'success')
       }
     } catch (e) {
       const msg = e instanceof Error ? e.message : 'Unknown error'
@@ -272,3 +325,4 @@ export function useResources(user: User | null, notify: NotifyFn) {
     processPastPaper: queuePastPaper,
   }
 }
+

@@ -162,11 +162,17 @@ ${QUESTION_SCHEMA}`
   )
 
   const parsed = safeParseJson(raw)
-  let questions: QuestionItem[] = (parsed.questions ?? []).map((q: any) => ({
-    ...sanitizeQuestion(q),
-    id: crypto.randomUUID(),
-    code: generateQuestionCode(config.subject),
-  }))
+  let questions: QuestionItem[] = (parsed.questions ?? []).map((q: any) => {
+    const sanitized = sanitizeQuestion(q)
+    return {
+      ...sanitized,
+      id: crypto.randomUUID(),
+      code: generateQuestionCode(config.subject, {
+        text: sanitized.text,
+        syllabusObjective: sanitized.syllabusObjective,
+      }),
+    }
+  })
 
   if (config.difficulty === 'Challenging' && questions.length > 0) {
     questions = await critiqueForDifficulty(questions, config.subject, config.model, key, onRetry)
@@ -216,11 +222,17 @@ ALWAYS respond with ONLY valid JSON — no markdown fences, no extra text outsid
   )
 
   const parsed = safeParseJson(raw)
-  return (parsed.questions ?? []).map((q: any, i: number) => ({
-    ...sanitizeQuestion(q),
-    id: questions[i]?.id ?? crypto.randomUUID(),
-    code: questions[i]?.code ?? generateQuestionCode(subject),
-  }))
+  return (parsed.questions ?? []).map((q: any, i: number) => {
+    const sanitized = sanitizeQuestion(q)
+    return {
+      ...sanitized,
+      id: questions[i]?.id ?? crypto.randomUUID(),
+      code: questions[i]?.code ?? generateQuestionCode(subject, {
+        text: sanitized.text,
+        syllabusObjective: sanitized.syllabusObjective,
+      }),
+    }
+  })
 }
 
 export async function auditTest(
@@ -246,11 +258,17 @@ ${questionsText}`
   )
 
   const parsed = safeParseJson(raw)
-  return (parsed.questions ?? []).map((q: any, i: number) => ({
-    ...sanitizeQuestion(q),
-    id: assessment.questions[i]?.id ?? crypto.randomUUID(),
-    code: assessment.questions[i]?.code ?? generateQuestionCode(subject),
-  }))
+  return (parsed.questions ?? []).map((q: any, i: number) => {
+    const sanitized = sanitizeQuestion(q)
+    return {
+      ...sanitized,
+      id: assessment.questions[i]?.id ?? crypto.randomUUID(),
+      code: assessment.questions[i]?.code ?? generateQuestionCode(subject, {
+        text: sanitized.text,
+        syllabusObjective: sanitized.syllabusObjective,
+      }),
+    }
+  })
 }
 
 export async function getStudentFeedback(
@@ -333,10 +351,16 @@ Actually use this exact structure:
   const parsed = safeParseJson(raw)
   return {
     analysis: parsed.analysis ?? '',
-    questions: (parsed.questions ?? []).map((q: any) => ({
-      ...sanitizeQuestion(q),
-      id: crypto.randomUUID(),
-      code: generateQuestionCode(subject),
-    })),
+    questions: (parsed.questions ?? []).map((q: any) => {
+      const sanitized = sanitizeQuestion(q)
+      return {
+        ...sanitized,
+        id: crypto.randomUUID(),
+        code: generateQuestionCode(subject, {
+          text: sanitized.text,
+          syllabusObjective: sanitized.syllabusObjective,
+        }),
+      }
+    }),
   }
 }

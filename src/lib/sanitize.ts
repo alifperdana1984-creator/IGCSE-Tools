@@ -37,12 +37,17 @@ export function sanitizeQuestion(q: any): Omit<QuestionItem, 'id'> {
   }
 }
 
-/** Generate a short question code like MAT-3.2-A4BF.
- *  Optionally extracts a syllabus reference from the question text. */
-export function generateQuestionCode(subject: string, text = ''): string {
+/** Generate a short question code like MAT-C4.1-A4BF.
+ *  Prefer syllabusObjective reference, then fall back to question text parsing. */
+export function generateQuestionCode(
+  subject: string,
+  opts: { text?: string; syllabusObjective?: string } = {}
+): string {
   const subj = SUBJECT_CODES[subject] ?? subject.substring(0, 3).toUpperCase()
-  const sylMatch = text.match(/Syllabus Reference[:\s]+([\d.]+)/i)
-  const syl = sylMatch ? sylMatch[1] : '?'
+  const fromObjective = opts.syllabusObjective?.match(/^\s*([A-Za-z]?\d+(?:\.\d+)*)\s*[–-]/)?.[1]
+    ?? opts.syllabusObjective?.match(/^\s*([A-Za-z]?\d+(?:\.\d+)*)\b/)?.[1]
+  const fromText = opts.text?.match(/Syllabus Reference[:\s]+([A-Za-z]?\d+(?:\.\d+)*)/i)?.[1]
+  const syl = fromObjective ?? fromText ?? 'GEN'
   const shortId = Math.random().toString(36).substring(2, 6).toUpperCase()
   return `${subj}-${syl}-${shortId}`
 }

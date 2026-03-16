@@ -75,23 +75,45 @@ Cambridge Command Words:
 function buildOpenAIReferenceContext(references: Reference[], difficulty?: string): string {
   const pastPapers = references.filter(r => r.resourceType === 'past_paper')
   const syllabuses = references.filter(r => r.resourceType === 'syllabus')
+  const others = references.filter(r => !r.resourceType || r.resourceType === 'other')
   let context = ''
+
   if (pastPapers.length > 0) {
     const focusInstruction = difficulty ? (PAST_PAPER_FOCUS[difficulty] ?? '') : ''
-    context += `\nIMPORTANT: You have been provided ${pastPapers.length} authentic Cambridge IGCSE past paper(s) as image references. Match their exact question style, command words, and mark allocation.\n${focusInstruction}\n`
+    context += `\nIMPORTANT: You have been provided ${pastPapers.length} authentic Cambridge IGCSE past paper reference(s). Match their exact question style, command words, and mark allocation.\n${focusInstruction}\n`
+
+    const extracted = pastPapers.filter(r => r.pastPaperText && r.pastPaperText.trim().length > 0)
+    if (extracted.length > 0) {
+      context += `\nPAST PAPER STYLE EXCERPTS (authoritative references):\n`
+      extracted.forEach((r, i) => {
+        context += `\n[Past Paper ${i + 1}] ${r.name ?? 'Unnamed'}\n${r.pastPaperText}\n`
+      })
+    }
+
+    const pdfWithoutText = pastPapers.filter(r => r.mimeType === 'application/pdf' && !r.pastPaperText)
+    if (pdfWithoutText.length > 0) {
+      const names = pdfWithoutText.map(r => r.name ?? 'Unnamed PDF').join(', ')
+      context += `\nNOTE: ${pdfWithoutText.length} PDF past paper(s) are attached but not text-extracted (${names}). Prioritize extracted references and image references for style fidelity.\n`
+    }
   }
+
   if (syllabuses.length > 0) {
     const cached = syllabuses.filter(r => r.syllabusText)
     if (cached.length > 0) {
-      context += `\nOFFICIAL SYLLABUS OBJECTIVES — only generate questions aligned to these:\n`
+      context += `\nOFFICIAL SYLLABUS OBJECTIVES - only generate questions aligned to these:\n`
       cached.forEach(r => { context += r.syllabusText + '\n' })
     } else {
       context += `\nIMPORTANT: An official Cambridge IGCSE syllabus has been provided. Only generate questions that cover the stated learning objectives.\n`
     }
   }
+
+  if (others.length > 0) {
+    const named = others.map(r => r.name).filter(Boolean)
+    if (named.length > 0) context += `\nADDITIONAL REFERENCES: ${named.join(', ')}.\n`
+  }
+
   return context
 }
-
 export async function generateTest(
   config: GenerationConfig & { references?: Reference[]; apiKey?: string },
   onRetry?: (attempt: number) => void
@@ -132,11 +154,17 @@ Respond with JSON matching this schema: ${QUESTION_SCHEMA}`
   )
 
   const parsed = JSON.parse(raw) as { questions: any[] }
-  let questions: QuestionItem[] = (parsed.questions ?? []).map(q => ({
-    ...sanitizeQuestion(q),
-    id: crypto.randomUUID(),
-    code: generateQuestionCode(config.subject),
-  }))
+  let questions: QuestionItem[] = (parsed.questions ?? []).map(q => {
+    const sanitized = sanitizeQuestion(q)
+    return {
+      ...sanitized,
+      id: crypto.randomUUID(),
+      code: generateQuestionCode(config.subject, {
+        text: sanitized.text,
+        syllabusObjective: sanitized.syllabusObjective,
+      }),
+    }
+  })
 
   if (config.difficulty === 'Challenging' && questions.length > 0) {
     questions = await critiqueForDifficulty(questions, config.subject, config.model, key, onRetry)
@@ -183,11 +211,17 @@ ALWAYS respond with ONLY valid JSON — no markdown fences, no extra text outsid
   )
 
   const parsed = JSON.parse(raw) as { questions: any[] }
-  return (parsed.questions ?? []).map((q, i) => ({
-    ...sanitizeQuestion(q),
-    id: questions[i]?.id ?? crypto.randomUUID(),
-    code: questions[i]?.code ?? generateQuestionCode(subject),
-  }))
+  return (parsed.questions ?? []).map((q, i) => {
+    const sanitized = sanitizeQuestion(q)
+    return {
+      ...sanitized,
+      id: questions[i]?.id ?? crypto.randomUUID(),
+      code: questions[i]?.code ?? generateQuestionCode(subject, {
+        text: sanitized.text,
+        syllabusObjective: sanitized.syllabusObjective,
+      }),
+    }
+  })
 }
 
 export async function auditTest(
@@ -212,11 +246,17 @@ ${questionsText}`
   )
 
   const parsed = JSON.parse(raw) as { questions: any[] }
-  return (parsed.questions ?? []).map((q, i) => ({
-    ...sanitizeQuestion(q),
-    id: assessment.questions[i]?.id ?? crypto.randomUUID(),
-    code: assessment.questions[i]?.code ?? generateQuestionCode(subject),
-  }))
+  return (parsed.questions ?? []).map((q, i) => {
+    const sanitized = sanitizeQuestion(q)
+    return {
+      ...sanitized,
+      id: assessment.questions[i]?.id ?? crypto.randomUUID(),
+      code: assessment.questions[i]?.code ?? generateQuestionCode(subject, {
+        text: sanitized.text,
+        syllabusObjective: sanitized.syllabusObjective,
+      }),
+    }
+  })
 }
 
 export async function getStudentFeedback(
@@ -265,10 +305,14 @@ export async function analyzeFile(
   apiKey?: string
 ): Promise<AnalyzeFileResult> {
   const isPdf = mimeType === 'application/pdf'
-  const prompt = `Analyze this Cambridge IGCSE ${subject} question image.
+  const refContext = references?.length
+    ? buildOpenAIReferenceContext(references)
+    : ''
+  const prompt = `Analyze this Cambridge IGCSE ${subject} question ${isPdf ? 'PDF' : 'image'}.
 1. Explain the topic and learning objectives.
 2. Generate EXACTLY ${count} similar questions with different context.
 3. Each question must have: text, answer, markScheme, marks, commandWord, type, hasDiagram.
+${refContext}
 Respond with JSON: { "analysis": "string", "questions": [...] } matching: ${QUESTION_SCHEMA}`
 
   const userContent: any[] = []
@@ -298,10 +342,17 @@ Respond with JSON: { "analysis": "string", "questions": [...] } matching: ${QUES
   const parsed = JSON.parse(raw)
   return {
     analysis: parsed.analysis ?? '',
-    questions: (parsed.questions ?? []).map((q: any) => ({
-      ...sanitizeQuestion(q),
-      id: crypto.randomUUID(),
-      code: generateQuestionCode(subject),
-    })),
+    questions: (parsed.questions ?? []).map((q: any) => {
+      const sanitized = sanitizeQuestion(q)
+      return {
+        ...sanitized,
+        id: crypto.randomUUID(),
+        code: generateQuestionCode(subject, {
+          text: sanitized.text,
+          syllabusObjective: sanitized.syllabusObjective,
+        }),
+      }
+    }),
   }
 }
+

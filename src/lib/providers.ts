@@ -37,6 +37,12 @@ export const DEFAULT_MODELS: Record<AIProvider, string> = {
   anthropic: 'claude-haiku-4-5-20251001',
 }
 
+export const DEFAULT_AUDIT_MODELS: Record<AIProvider, string> = {
+  gemini: 'gemini-2.5-pro',
+  openai: 'gpt-4.1',
+  anthropic: 'claude-sonnet-4-6',
+}
+
 export const API_KEY_PLACEHOLDERS: Record<AIProvider, string> = {
   gemini: 'AIza...',
   openai: 'sk-...',

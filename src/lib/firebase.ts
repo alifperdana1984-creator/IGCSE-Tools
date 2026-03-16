@@ -293,12 +293,17 @@ export const getSyllabusCache = async (resourceId: string): Promise<SyllabusCach
 export const savePastPaperCache = async (
   resourceId: string,
   subject: string,
-  examples: string
+  data: {
+    examples?: string
+    items?: PastPaperCache['items']
+    summary?: string
+    version?: number
+  }
 ): Promise<void> => {
   await setDoc(doc(db, 'pastPaperCache', resourceId), {
     resourceId,
     subject,
-    examples,
+    ...data,
     processedAt: serverTimestamp(),
     userId: auth.currentUser?.uid ?? null,
   })
