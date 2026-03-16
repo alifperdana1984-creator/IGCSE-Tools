@@ -99,10 +99,26 @@ export async function withRetry<T>(
           message: 'Model is currently overloaded. Try switching to a Flash model.',
         } satisfies GeminiError
       }
+      if (status === 404) {
+        throw {
+          type: 'unknown',
+          retryable: false,
+          message: 'Model not found (404). Check your model selection — the selected model may not exist or your API key may not have access to it.',
+        } satisfies GeminiError
+      }
+      if (status === 401 || status === 403) {
+        throw {
+          type: 'unknown',
+          retryable: false,
+          message: 'Invalid or unauthorized API key. Please check your key in API Settings.',
+        } satisfies GeminiError
+      }
+      // Preserve original error message if available
+      const originalMsg = err?.message && !err.message.startsWith('{') ? err.message : null
       throw {
         type: 'unknown',
         retryable: false,
-        message: 'Generation failed. Please try again.',
+        message: originalMsg ?? 'Generation failed. Please try again.',
       } satisfies GeminiError
     }
   }

@@ -175,7 +175,13 @@ export async function getStudentFeedback(
     }),
   })
 
-  if (!res.ok) throw new Error(`OpenAI error ${res.status}`)
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}))
+    const msg = body.error?.message ?? `OpenAI error ${res.status}`
+    const e: any = new Error(msg)
+    e.status = res.status
+    throw e
+  }
   const data = await res.json()
   return data.choices[0].message.content as string
 }
