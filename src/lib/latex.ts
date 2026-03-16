@@ -7,8 +7,10 @@ const BARE_LATEX_RE = /(\\(?:frac|sqrt|sum|int|prod|lim|infty|partial|Delta|alph
  *    (handles MCQ options where question stem has $ but options don't)
  */
 export function preprocessLatex(text: string): string {
-  // Step 0: escape currency dollar signs ($5000, $3.50) so they don't become math delimiters
-  let result = text.replace(/\$(\d)/g, '\\$$1')
+  // Step 0: escape currency dollar signs ($5000, $3.50) but NOT math blocks like $1000 \times 4$
+  // Currency pattern: $digits followed by space+letter (plain English word, not LaTeX command/operator)
+  // "$5000 at a rate" → \$5000   |   "$1000 \times" → unchanged   |   "$4$" → unchanged
+  let result = text.replace(/\$(\d[\d,.]*)(?=\s[a-zA-Z])/g, '\\$$1')
 
   // Step 1: merge accidentally split adjacent math blocks
   result = result.replace(/\$([^$\n]+?)\$\$([^$\n]+?)\$/g, (_m, a, b) => `$${a}${b}$`)
