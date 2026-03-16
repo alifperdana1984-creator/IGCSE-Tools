@@ -42,6 +42,7 @@ const QUESTION_SCHEMA = `{
       "commandWord": "string",
       "type": "mcq | short_answer | structured",
       "hasDiagram": boolean,
+      "syllabusObjective": "string (the specific Cambridge IGCSE learning objective, e.g. 'C4.1 – Define the term acid in terms of proton donation')",
       "options": ["string (option A text)", "string (option B text)", "string (option C text)", "string (option D text)"]
     }
   ]
@@ -77,6 +78,7 @@ function sanitize(q: any): Omit<QuestionItem, 'id'> {
     commandWord: q.commandWord ?? '',
     type: q.type ?? 'short_answer',
     hasDiagram: Boolean(q.hasDiagram),
+    ...(q.syllabusObjective ? { syllabusObjective: q.syllabusObjective } : {}),
   }
 }
 
@@ -152,7 +154,7 @@ Rules:
 1. Generate EXACTLY ${config.count} questions.
 2. CRITICAL: ALL mathematical expressions, variables, equations, and formulas MUST be wrapped in LaTeX inline delimiters: $x^2$, $3x^2 - 5x + 2 = 0$, $\frac{a}{b}$, $H_2O$. NEVER write math as plain text.
 3. FOR MCQ QUESTIONS: Set type to "mcq". Put the question stem in "text" (no A/B/C/D options embedded there). Put exactly 4 answer choices as plain strings in the "options" array. The "answer" field must be ONLY the letter "A", "B", "C", or "D". If 4 distinct text-based options cannot be written, use short_answer instead.
-4. Add **Syllabus Reference:** at end of each question text.
+4. syllabusObjective: the specific Cambridge IGCSE learning objective this question assesses. Format: "ref – objective statement" (e.g. "C4.1 – Define the term acid in terms of proton donation"). One sentence max. Do NOT add a Syllabus Reference line in the question text.
 
 Respond with ONLY this JSON structure (no other text):
 ${QUESTION_SCHEMA}`

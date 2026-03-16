@@ -312,7 +312,7 @@ export function AssessmentView({
                   </div>
                 ) : (
                   <div className="mb-6 group">
-                    <div className="flex items-center gap-2 mb-1">
+                    <div className="flex items-center gap-2 mb-1 flex-wrap">
                       <span className="text-xs font-semibold bg-emerald-100 text-emerald-800 px-2 py-0.5 rounded">
                         Q{i + 1} · {q.marks}m · {q.commandWord}
                       </span>
@@ -320,6 +320,11 @@ export function AssessmentView({
                       {q.code && (
                         <span className="text-xs font-mono text-stone-400 bg-stone-100 px-1.5 py-0.5 rounded">
                           {q.code}
+                        </span>
+                      )}
+                      {q.syllabusObjective && (
+                        <span className="text-xs text-violet-700 bg-violet-50 border border-violet-200 px-2 py-0.5 rounded-full" title="Syllabus objective">
+                          📋 {q.syllabusObjective}
                         </span>
                       )}
                       {onUpdateQuestion && !studentMode && (

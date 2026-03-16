@@ -13,6 +13,7 @@ export interface QuestionItem {
   commandWord: string
   type: 'mcq' | 'short_answer' | 'structured'
   hasDiagram: boolean
+  syllabusObjective?: string
 }
 
 export interface Assessment {
