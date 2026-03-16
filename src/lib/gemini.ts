@@ -80,10 +80,17 @@ export async function withRetry<T>(
       return await fn()
     } catch (err: any) {
       const status = err?.status ?? err?.code
-      if (status === 429 && i < maxRetries - 1) {
-        onRetry?.(i + 1)
-        await new Promise(r => setTimeout(r, Math.pow(2, i) * 5000))
-        continue
+      if (status === 429) {
+        if (i < maxRetries - 1) {
+          onRetry?.(i + 1)
+          await new Promise(r => setTimeout(r, Math.pow(2, i) * 5000))
+          continue
+        }
+        throw {
+          type: 'rate_limit',
+          retryable: false,
+          message: 'Rate limit exceeded. Please wait a few minutes and try again.',
+        } satisfies GeminiError
       }
       if (status === 503) {
         throw {
@@ -92,7 +99,11 @@ export async function withRetry<T>(
           message: 'Model is currently overloaded. Try switching to a Flash model.',
         } satisfies GeminiError
       }
-      throw err
+      throw {
+        type: 'unknown',
+        retryable: false,
+        message: 'Generation failed. Please try again.',
+      } satisfies GeminiError
     }
   }
   throw {
