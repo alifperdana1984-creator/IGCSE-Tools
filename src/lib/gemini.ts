@@ -158,7 +158,10 @@ function buildReferenceParts(references: Reference[]): any[] {
   if (pastPapers.length > 0) {
     parts.push({ text: `REFERENCE PAST PAPERS (${pastPapers.length} document${pastPapers.length > 1 ? 's' : ''}): The following are authentic Cambridge IGCSE past papers. Study them carefully and replicate their exact question style, phrasing, difficulty calibration, command word usage, diagram style, and mark allocation patterns. Your generated questions MUST feel indistinguishable from these official papers.` })
     pastPapers.forEach(ref => {
-      if (ref.geminiFileUri && ref.geminiFileUploadedAt && Date.now() - ref.geminiFileUploadedAt < GEMINI_URI_VALID_MS) {
+      if (ref.pastPaperText) {
+        // Use cached text extraction — much cheaper than sending the full PDF
+        parts.push({ text: `PAST PAPER STYLE EXAMPLES (extracted):\n${ref.pastPaperText}` })
+      } else if (ref.geminiFileUri && ref.geminiFileUploadedAt && Date.now() - ref.geminiFileUploadedAt < GEMINI_URI_VALID_MS) {
         parts.push({ fileData: { fileUri: ref.geminiFileUri, mimeType: ref.mimeType } })
       } else {
         parts.push({ inlineData: { mimeType: ref.mimeType, data: ref.data.split(',')[1] || ref.data } })

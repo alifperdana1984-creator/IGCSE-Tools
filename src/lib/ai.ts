@@ -32,6 +32,7 @@ export type Reference = {
   geminiFileUri?: string
   geminiFileUploadedAt?: number
   syllabusText?: string
+  pastPaperText?: string
 }
 
 type WithExtra = GenerationConfig & {

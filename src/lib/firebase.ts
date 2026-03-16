@@ -19,7 +19,7 @@ import {
 } from 'firebase/firestore';
 import { getStorage, ref as storageRef, uploadBytes, getDownloadURL, deleteObject } from 'firebase/storage';
 import firebaseConfig from '../../firebase-applet-config.json';
-import type { Assessment, Question, Folder, Resource, ResourceType, SyllabusCache } from './types'
+import type { Assessment, Question, Folder, Resource, ResourceType, SyllabusCache, PastPaperCache } from './types'
 
 const app = initializeApp(firebaseConfig);
 export const auth = getAuth(app);
@@ -251,6 +251,24 @@ export const saveSyllabusCache = async (
 export const getSyllabusCache = async (resourceId: string): Promise<SyllabusCache | null> => {
   const snap = await getDoc(doc(db, 'syllabusCache', resourceId))
   return snap.exists() ? (snap.data() as SyllabusCache) : null
+}
+
+export const savePastPaperCache = async (
+  resourceId: string,
+  subject: string,
+  examples: string
+): Promise<void> => {
+  await setDoc(doc(db, 'pastPaperCache', resourceId), {
+    resourceId,
+    subject,
+    examples,
+    processedAt: serverTimestamp(),
+  })
+}
+
+export const getPastPaperCache = async (resourceId: string): Promise<PastPaperCache | null> => {
+  const snap = await getDoc(doc(db, 'pastPaperCache', resourceId))
+  return snap.exists() ? (snap.data() as PastPaperCache) : null
 }
 
 export const getResources = async (subject?: string) => {

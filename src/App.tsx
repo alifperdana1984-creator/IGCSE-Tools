@@ -352,9 +352,17 @@ export default function App() {
             if (resource && resourceType === 'syllabus' && currentApiKey) {
               resources.processSyllabus(resource, currentApiKey)
             }
+            if (resource && resourceType === 'past_paper' && currentApiKey) {
+              resources.processPastPaper(resource, currentApiKey)
+            }
           })
         }}
-        onAddToKB={resources.addToKnowledgeBase}
+        onAddToKB={(resource) => {
+          resources.addToKnowledgeBase(resource)
+          if (resource.resourceType === 'past_paper' && currentApiKey) {
+            resources.processPastPaper(resource, currentApiKey)
+          }
+        }}
         onRemoveFromKB={resources.removeFromKnowledgeBase}
         onDeleteResource={resources.deleteResource}
         onUpdateResourceType={resources.updateResourceType}

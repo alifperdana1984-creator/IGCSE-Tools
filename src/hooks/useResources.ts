@@ -7,6 +7,7 @@ import {
   updateResourceType as fbUpdateResourceType,
   updateResourceGeminiUri as fbUpdateGeminiUri,
   saveSyllabusCache, getSyllabusCache,
+  savePastPaperCache, getPastPaperCache,
 } from '../lib/firebase'
 import { ref as storageRef, getBlob } from 'firebase/storage'
 
@@ -114,6 +115,46 @@ export function useResources(user: User | null, notify: NotifyFn) {
     }
   }, [notify])
 
+  const processPastPaper = useCallback(async (resource: Resource, apiKey: string): Promise<void> => {
+    try {
+      const existing = await getPastPaperCache(resource.id)
+      if (existing) return
+    } catch { return }
+
+    try {
+      const sRef = storageRef(storage, resource.storagePath)
+      const blob = await getBlob(sRef)
+      const arrayBuffer = await blob.arrayBuffer()
+      const bytes = new Uint8Array(arrayBuffer)
+      let binary = ''
+      bytes.forEach(b => binary += String.fromCharCode(b))
+      const base64 = btoa(binary)
+
+      const { GoogleGenAI, Type } = await import('@google/genai')
+      const ai = new GoogleGenAI({ apiKey })
+      const response = await ai.models.generateContent({
+        model: 'gemini-2.0-flash',
+        contents: {
+          parts: [
+            { inlineData: { mimeType: resource.mimeType, data: base64 } },
+            { text: `This is a Cambridge IGCSE ${resource.subject} past paper. Extract 8–12 representative question-and-answer examples that best demonstrate the style, phrasing, difficulty, and mark scheme format of this paper. For each example include: the question text, the command word used, the number of marks, and the mark scheme answer. Format as plain text. These examples will be used as style references for generating new questions — do not include full paper context, just the representative Q&A pairs.` },
+          ]
+        },
+        config: {
+          responseMimeType: 'text/plain',
+          maxOutputTokens: 4096,
+        },
+      })
+      const examples = (response.text || '').trim()
+      if (examples.length > 100) {
+        await savePastPaperCache(resource.id, resource.subject, examples)
+        notify(`Past paper "${resource.name}" processed — style examples cached`, 'success')
+      }
+    } catch (e) {
+      console.warn('Past paper processing failed:', e)
+    }
+  }, [notify])
+
   const deleteResource = useCallback(async (resource: Resource) => {
     try {
       await fbDelete(resource)
@@ -150,6 +191,6 @@ export function useResources(user: User | null, notify: NotifyFn) {
     resources, knowledgeBase, uploading,
     loadResources, uploadResource, deleteResource,
     addToKnowledgeBase, removeFromKnowledgeBase, getBase64,
-    updateResourceType, updateGeminiUri, processSyllabus,
+    updateResourceType, updateGeminiUri, processSyllabus, processPastPaper,
   }
 }

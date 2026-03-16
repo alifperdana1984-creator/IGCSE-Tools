@@ -155,6 +155,11 @@ service cloud.firestore {
       allow write: if isAuthenticated();
     }
 
+    match /pastPaperCache/{resourceId} {
+      allow read: if isAuthenticated();
+      allow write: if isAuthenticated();
+    }
+
     match /users/{userId} {
       allow read, write: if isOwner(userId);
     }

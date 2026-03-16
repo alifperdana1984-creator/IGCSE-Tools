@@ -4,7 +4,7 @@ import type { AIProvider } from '../lib/providers'
 import type { NotifyFn } from './useNotifications'
 import { generateTest, auditTest, getStudentFeedback as aiFeedback, analyzeFile as aiAnalyze } from '../lib/ai'
 import { uploadToGeminiFileApi } from '../lib/gemini'
-import { getSyllabusCache } from '../lib/firebase'
+import { getSyllabusCache, getPastPaperCache } from '../lib/firebase'
 import { Timestamp } from 'firebase/firestore'
 import { auth } from '../lib/firebase'
 
@@ -47,6 +47,15 @@ async function buildReferences(
             }
           } catch { /* fall through to file upload */ }
         }
+        // For past paper: check text cache before downloading the file
+        if (r.resourceType === 'past_paper') {
+          try {
+            const cache = await getPastPaperCache(r.id)
+            if (cache && cache.examples.length > 100) {
+              return { data: '', mimeType: r.mimeType, resourceType: 'past_paper', name: r.name, pastPaperText: cache.examples }
+            }
+          } catch { /* fall through to file upload */ }
+        }
         // URI missing or expired — download, upload to File API, save URI
         try {
           const base64 = await getBase64(r)
@@ -66,7 +75,7 @@ async function buildReferences(
           return { data: base64, mimeType: r.mimeType, resourceType: r.resourceType, name: r.name }
         }
       }
-      // Non-Gemini provider: for syllabus check cache first
+      // Non-Gemini provider: check text caches first
       if (r.resourceType === 'syllabus') {
         try {
           const cache = await getSyllabusCache(r.id)
@@ -75,6 +84,14 @@ async function buildReferences(
               .map(([topic, objectives]) => `### ${topic}\n${objectives}`)
               .join('\n\n')
             return { data: '', mimeType: r.mimeType, resourceType: 'syllabus', name: r.name, syllabusText }
+          }
+        } catch { /* fall through */ }
+      }
+      if (r.resourceType === 'past_paper') {
+        try {
+          const cache = await getPastPaperCache(r.id)
+          if (cache && cache.examples.length > 100) {
+            return { data: '', mimeType: r.mimeType, resourceType: 'past_paper', name: r.name, pastPaperText: cache.examples }
           }
         } catch { /* fall through */ }
       }

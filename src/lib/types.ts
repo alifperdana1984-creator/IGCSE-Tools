@@ -71,6 +71,13 @@ export interface SyllabusCache {
   processedAt: Timestamp
 }
 
+export interface PastPaperCache {
+  resourceId: string
+  subject: string
+  examples: string   // extracted Q&A examples as plain text
+  processedAt: Timestamp
+}
+
 export interface GenerationConfig {
   provider: AIProvider
   subject: string
