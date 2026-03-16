@@ -225,10 +225,10 @@ export function AssessmentView({
             {isSaving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <BookmarkPlus className="w-3.5 h-3.5" />}
             Save
           </button>
-          <button onClick={() => onCopy(currentText)} className="p-1.5 text-stone-500 hover:bg-stone-100 rounded" title="Copy">
+          <button onClick={() => onCopy(currentText)} className="p-1.5 text-stone-500 hover:bg-stone-100 rounded" title="Copy" aria-label="Copy to clipboard">
             <Copy className="w-4 h-4" />
           </button>
-          <button onClick={handleDownloadPDF} disabled={isDownloading} className="p-1.5 text-stone-500 hover:bg-stone-100 rounded disabled:opacity-60" title="Download PDF">
+          <button onClick={handleDownloadPDF} disabled={isDownloading} className="p-1.5 text-stone-500 hover:bg-stone-100 rounded disabled:opacity-60" title="Download PDF" aria-label="Download as PDF">
             {isDownloading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />}
           </button>
           {isEditing ? (
@@ -241,7 +241,7 @@ export function AssessmentView({
               </button>
             </>
           ) : (
-            <button onClick={onEdit} className="p-1.5 text-stone-500 hover:bg-stone-100 rounded" title="Edit markdown">
+            <button onClick={onEdit} className="p-1.5 text-stone-500 hover:bg-stone-100 rounded" title="Edit markdown" aria-label="Edit assessment markdown">
               <Edit3 className="w-4 h-4" />
             </button>
           )}

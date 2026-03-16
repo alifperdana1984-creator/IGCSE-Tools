@@ -1,8 +1,8 @@
-import React, { useState, useEffect, useCallback } from 'react'
+import React, { useState, useEffect, useCallback, useRef } from 'react'
 import { onAuthStateChanged, User } from 'firebase/auth'
-import { BookOpen, LogIn, LogOut, Library as LibraryIcon, FilePlus, AlertTriangle, X, KeyRound, RefreshCw, Minus, Sparkles } from 'lucide-react'
+import { BookOpen, LogIn, LogOut, Library as LibraryIcon, FilePlus, AlertTriangle, X, KeyRound, RefreshCw, Minus, Sparkles, Trash2 } from 'lucide-react'
 import type { AIError } from './lib/types'
-import { auth, signInWithGoogle, logout } from './lib/firebase'
+import { auth, signInWithGoogle, logout, deleteUserData } from './lib/firebase'
 import { IGCSE_SUBJECTS, IGCSE_TOPICS, DIFFICULTY_LEVELS } from './lib/gemini'
 import { Timestamp } from 'firebase/firestore'
 import type { GenerationConfig, Assessment, Question, QuestionItem } from './lib/types'
@@ -126,7 +126,14 @@ function NewAssessmentModal({ onConfirm, onClose }: {
   const [difficulty, setDifficulty] = useState('Balanced')
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={onClose}>
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/40"
+      onClick={onClose}
+      onKeyDown={e => e.key === 'Escape' && onClose()}
+      role="dialog"
+      aria-modal="true"
+      aria-label="New Assessment"
+    >
       <div className="bg-white rounded-xl shadow-xl w-full max-w-sm mx-4 p-5 flex flex-col gap-4" onClick={e => e.stopPropagation()}>
         <h2 className="text-sm font-semibold text-stone-800">New Assessment</h2>
         <div className="flex flex-col gap-3">
@@ -175,6 +182,55 @@ function NewAssessmentModal({ onConfirm, onClose }: {
   )
 }
 
+function DeleteAccountModal({ onConfirm, onClose, isDeleting }: {
+  onConfirm: () => void
+  onClose: () => void
+  isDeleting: boolean
+}) {
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50"
+      onClick={!isDeleting ? onClose : undefined}
+      onKeyDown={e => !isDeleting && e.key === 'Escape' && onClose()}
+      role="dialog"
+      aria-modal="true"
+      aria-label="Delete Account"
+    >
+      <div
+        className="bg-white rounded-xl shadow-xl w-full max-w-sm mx-4 p-5 flex flex-col gap-4"
+        onClick={e => e.stopPropagation()}
+      >
+        <div className="flex items-start gap-3">
+          <Trash2 className="w-5 h-5 text-red-500 shrink-0 mt-0.5" />
+          <div>
+            <h2 className="text-sm font-semibold text-stone-800">Delete Account</h2>
+            <p className="text-xs text-stone-500 mt-1">
+              This permanently deletes your account and all data — assessments, questions, folders, and resources. This action cannot be undone.
+            </p>
+          </div>
+        </div>
+        <div className="flex justify-end gap-2">
+          <button
+            onClick={onClose}
+            disabled={isDeleting}
+            className="px-3 py-1.5 text-xs bg-stone-100 text-stone-600 rounded-lg font-medium hover:bg-stone-200 disabled:opacity-50"
+          >
+            Cancel
+          </button>
+          <button
+            onClick={onConfirm}
+            disabled={isDeleting}
+            className="px-3 py-1.5 text-xs bg-red-600 text-white rounded-lg font-medium hover:bg-red-700 disabled:opacity-60 flex items-center gap-1.5"
+          >
+            {isDeleting ? <RefreshCw className="w-3 h-3 animate-spin" /> : <Trash2 className="w-3 h-3" />}
+            {isDeleting ? 'Deleting…' : 'Delete everything'}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 export default function App() {
   const [user, setUser] = useState<User | null>(null)
   const [view, setView] = useState<'main' | 'library'>('main')
@@ -186,6 +242,8 @@ export default function App() {
   const [selectedFolderId, setSelectedFolderId] = useState<string | null | undefined>(undefined)
   const [showNewAssessmentModal, setShowNewAssessmentModal] = useState(false)
   const [apiSettingsOpen, setApiSettingsOpen] = useState(false)
+  const [showDeleteModal, setShowDeleteModal] = useState(false)
+  const [isDeleting, setIsDeleting] = useState(false)
 
   const { notifications, notify, dismiss } = useNotifications()
   const { provider, setProvider, apiKeys, setApiKey, currentApiKey, customModel, setCustomModel, defaultModel } = useApiSettings()
@@ -309,6 +367,18 @@ export default function App() {
     })
   }, [generation])
 
+  const handleDeleteAccount = useCallback(async () => {
+    setIsDeleting(true)
+    try {
+      await deleteUserData()
+      // Auth state change fires automatically after account deletion
+    } catch (e) {
+      notify('Failed to delete account. You may need to re-login first.', 'error')
+      setIsDeleting(false)
+      setShowDeleteModal(false)
+    }
+  }, [notify])
+
   const handleCopy = useCallback(async (text: string) => {
     const ok = await copyToClipboard(text)
     notify(ok ? 'Copied to clipboard' : 'Copy failed', ok ? 'success' : 'error')
@@ -415,7 +485,20 @@ export default function App() {
               Library
             </button>
             <span className="text-xs text-stone-500">{user.displayName}</span>
-            <button onClick={logout} className="p-1.5 text-stone-400 hover:text-stone-600" title="Sign out">
+            <button
+              onClick={() => setShowDeleteModal(true)}
+              className="p-1.5 text-stone-300 hover:text-red-500 transition-colors"
+              title="Delete account"
+              aria-label="Delete account"
+            >
+              <Trash2 className="w-3.5 h-3.5" />
+            </button>
+            <button
+              onClick={logout}
+              className="p-1.5 text-stone-400 hover:text-stone-600"
+              title="Sign out"
+              aria-label="Sign out"
+            >
               <LogOut className="w-4 h-4" />
             </button>
           </div>
@@ -506,6 +589,14 @@ export default function App() {
         <NewAssessmentModal
           onConfirm={handleCreateBlankAssessment}
           onClose={() => setShowNewAssessmentModal(false)}
+        />
+      )}
+
+      {showDeleteModal && (
+        <DeleteAccountModal
+          onConfirm={handleDeleteAccount}
+          onClose={() => setShowDeleteModal(false)}
+          isDeleting={isDeleting}
         />
       )}
     </div>

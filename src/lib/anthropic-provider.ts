@@ -1,6 +1,7 @@
 import type { QuestionItem, Assessment, AnalyzeFileResult, GenerationConfig } from './types'
 import type { Reference } from './ai'
 import { withRetry, DIFFICULTY_GUIDANCE, PAST_PAPER_FOCUS } from './gemini'
+import { sanitizeQuestion, generateQuestionCode } from './sanitize'
 
 const ANTHROPIC_URL = 'https://api.anthropic.com/v1/messages'
 
@@ -62,34 +63,7 @@ Cambridge Command Words:
 - Calculate: Work out from given facts, figures or information.`
 }
 
-function sanitize(q: any): Omit<QuestionItem, 'id'> {
-  const fix = (s: string) => (s ?? '').replace(/\\n/g, '\n')
-  const stripNum = (s: string) => fix(s).replace(/^(\*{0,2})\s*\d+[.)]\s*\*{0,2}\s*/, '$1').trimStart()
-  let text = stripNum(q.text)
-  if (q.type === 'mcq' && Array.isArray(q.options) && q.options.length > 0 && !/\bA\)/.test(text)) {
-    const letters = ['A', 'B', 'C', 'D']
-    const optLines = q.options.slice(0, 4).map((opt: string, i: number) => `${letters[i]}) ${opt}`).join('\n\n')
-    text = `${text}\n\n${optLines}`
-  }
-  return {
-    text,
-    answer: fix(q.answer),
-    markScheme: fix(q.markScheme),
-    marks: Number(q.marks) || 1,
-    commandWord: q.commandWord ?? '',
-    type: q.type ?? 'short_answer',
-    hasDiagram: Boolean(q.hasDiagram),
-    ...(q.syllabusObjective ? { syllabusObjective: q.syllabusObjective } : {}),
-    ...(q.difficultyStars ? { difficultyStars: Math.min(3, Math.max(1, Number(q.difficultyStars))) as 1 | 2 | 3 } : {}),
-  }
-}
-
-function generateCode(subject: string): string {
-  const codes: Record<string, string> = { Mathematics: 'MAT', Biology: 'BIO', Physics: 'PHY', Chemistry: 'CHM' }
-  const subj = codes[subject] ?? subject.substring(0, 3).toUpperCase()
-  const shortId = Math.random().toString(36).substring(2, 6).toUpperCase()
-  return `${subj}-?-${shortId}`
-}
+// sanitizeQuestion and generateQuestionCode imported from './sanitize'
 
 function safeParseJson(text: string): any {
   const cleaned = text.trim().replace(/^```(?:json)?\n?/, '').replace(/\n?```$/, '')
@@ -189,9 +163,9 @@ ${QUESTION_SCHEMA}`
 
   const parsed = safeParseJson(raw)
   let questions: QuestionItem[] = (parsed.questions ?? []).map((q: any) => ({
-    ...sanitize(q),
+    ...sanitizeQuestion(q),
     id: crypto.randomUUID(),
-    code: generateCode(config.subject),
+    code: generateQuestionCode(config.subject),
   }))
 
   if (config.difficulty === 'Challenging' && questions.length > 0) {
@@ -243,9 +217,9 @@ ALWAYS respond with ONLY valid JSON — no markdown fences, no extra text outsid
 
   const parsed = safeParseJson(raw)
   return (parsed.questions ?? []).map((q: any, i: number) => ({
-    ...sanitize(q),
+    ...sanitizeQuestion(q),
     id: questions[i]?.id ?? crypto.randomUUID(),
-    code: questions[i]?.code ?? generateCode(subject),
+    code: questions[i]?.code ?? generateQuestionCode(subject),
   }))
 }
 
@@ -273,9 +247,9 @@ ${questionsText}`
 
   const parsed = safeParseJson(raw)
   return (parsed.questions ?? []).map((q: any, i: number) => ({
-    ...sanitize(q),
+    ...sanitizeQuestion(q),
     id: assessment.questions[i]?.id ?? crypto.randomUUID(),
-    code: assessment.questions[i]?.code ?? generateCode(subject),
+    code: assessment.questions[i]?.code ?? generateQuestionCode(subject),
   }))
 }
 
@@ -360,9 +334,9 @@ Actually use this exact structure:
   return {
     analysis: parsed.analysis ?? '',
     questions: (parsed.questions ?? []).map((q: any) => ({
-      ...sanitize(q),
+      ...sanitizeQuestion(q),
       id: crypto.randomUUID(),
-      code: generateCode(subject),
+      code: generateQuestionCode(subject),
     })),
   }
 }

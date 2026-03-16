@@ -1,6 +1,7 @@
 import { GoogleGenAI, Type } from "@google/genai";
 import type { QuestionItem, Assessment, AnalyzeFileResult, GenerationConfig, GeminiError } from './types'
 import type { Reference } from './ai'
+import { sanitizeQuestion, generateQuestionCode as sharedGenerateQuestionCode } from './sanitize'
 
 function getAI(apiKey?: string) {
   return new GoogleGenAI({ apiKey: apiKey || process.env.GEMINI_API_KEY || "" });
@@ -10,13 +11,8 @@ const SUBJECT_CODES: Record<string, string> = {
   'Mathematics': 'MAT', 'Biology': 'BIO', 'Physics': 'PHY', 'Chemistry': 'CHM',
 }
 
-function generateQuestionCode(subject: string, text: string): string {
-  const subj = SUBJECT_CODES[subject] ?? subject.substring(0, 3).toUpperCase()
-  const sylMatch = text.match(/Syllabus Reference[:\s]+([\d.]+)/i)
-  const syl = sylMatch ? sylMatch[1] : '?'
-  const shortId = Math.random().toString(36).substring(2, 6).toUpperCase()
-  return `${subj}-${syl}-${shortId}`
-}
+// Re-export shared helper so callers can still import generateQuestionCode from gemini
+export { sharedGenerateQuestionCode as generateQuestionCode }
 
 const DIFFICULTY_CODES: Record<string, string> = {
   'Easy': 'EAS', 'Medium': 'MED', 'Challenging': 'CHL', 'Balanced': 'BAL',
@@ -170,6 +166,8 @@ export async function withRetry<T>(
 // 48h minus 2h buffer
 const GEMINI_URI_VALID_MS = 46 * 60 * 60 * 1000
 
+const FILE_UPLOAD_TIMEOUT_MS = 120_000 // 2 minutes max for a file upload
+
 export async function uploadToGeminiFileApi(
   base64: string,
   mimeType: string,
@@ -181,7 +179,18 @@ export async function uploadToGeminiFileApi(
   const bytes = new Uint8Array(binaryStr.length)
   for (let i = 0; i < binaryStr.length; i++) bytes[i] = binaryStr.charCodeAt(i)
   const blob = new Blob([bytes], { type: mimeType })
-  const uploaded = await ai.files.upload({ file: blob, config: { displayName, mimeType } })
+
+  const timeoutPromise = new Promise<never>((_, reject) =>
+    setTimeout(
+      () => reject(new Error(`File upload timed out after ${FILE_UPLOAD_TIMEOUT_MS / 1000}s. Check your connection or try a smaller file.`)),
+      FILE_UPLOAD_TIMEOUT_MS
+    )
+  )
+
+  const uploaded = await Promise.race([
+    ai.files.upload({ file: blob, config: { displayName, mimeType } }),
+    timeoutPromise,
+  ])
   return (uploaded as any).uri as string
 }
 
@@ -320,7 +329,7 @@ When generating SVG diagrams:
   const raw = safeJsonParse(response.text || '{}') as { questions: Omit<QuestionItem, 'id'>[] }
   let questions: QuestionItem[] = (raw.questions ?? []).map(q => {
     const sanitized = sanitizeQuestion(q)
-    return { ...sanitized, id: crypto.randomUUID(), code: generateQuestionCode(config.subject, sanitized.text) }
+    return { ...sanitized, id: crypto.randomUUID(), code: sharedGenerateQuestionCode(config.subject, sanitized.text) }
   })
 
   if (config.difficulty === 'Challenging' && questions.length > 0) {
@@ -401,7 +410,7 @@ TASK:
     return {
       ...sanitized,
       id: existing?.id ?? crypto.randomUUID(),
-      code: existing?.code ?? generateQuestionCode(subject, sanitized.text),
+      code: existing?.code ?? sharedGenerateQuestionCode(subject, sanitized.text),
     }
   })
 }
@@ -472,7 +481,7 @@ If the assessment is perfect, return it as is.`
     return {
       ...sanitized,
       id: existing?.id ?? crypto.randomUUID(),
-      code: existing?.code ?? generateQuestionCode(assessment.subject, sanitized.text),
+      code: existing?.code ?? sharedGenerateQuestionCode(assessment.subject, sanitized.text),
     }
   })
 }
@@ -524,18 +533,7 @@ export async function getStudentFeedback(
   return response.text || "Could not generate feedback."
 }
 
-function sanitizeQuestion(q: any): Omit<QuestionItem, 'id'> {
-  const fix = (s: string) => (s ?? '').replace(/\\n/g, '\n')
-  const stripNum = (s: string) => fix(s).replace(/^(\*{0,2})\s*\d+[.)]\s*\*{0,2}\s*/, '$1').trimStart()
-  let text = stripNum(q.text)
-  // Merge options array into text for MCQ if options are not already embedded
-  if (q.type === 'mcq' && Array.isArray(q.options) && q.options.length > 0 && !/\bA\)/.test(text)) {
-    const letters = ['A', 'B', 'C', 'D']
-    const optLines = q.options.slice(0, 4).map((opt: string, i: number) => `${letters[i]}) ${opt}`).join('\n\n')
-    text = `${text}\n\n${optLines}`
-  }
-  return { ...q, text, answer: fix(q.answer), markScheme: fix(q.markScheme) }
-}
+// sanitizeQuestion is now imported from './sanitize'
 
 function safeJsonParse(text: string) {
   if (!text) return {};
@@ -640,7 +638,7 @@ Use SVG for any diagrams using **camelCase** attributes.`,
     analysis: raw.analysis ?? '',
     questions: (raw.questions ?? []).map((q: any) => {
       const sanitized = sanitizeQuestion(q)
-      return { ...sanitized, id: crypto.randomUUID(), code: generateQuestionCode(subject, sanitized.text) }
+      return { ...sanitized, id: crypto.randomUUID(), code: sharedGenerateQuestionCode(subject, sanitized.text) }
     }),
   }
 }

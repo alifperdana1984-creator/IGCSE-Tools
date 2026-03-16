@@ -4,7 +4,7 @@ import type { Assessment, Question, Folder } from '../lib/types'
 import type { NotifyFn } from './useNotifications'
 import { generateAssessmentCode } from '../lib/gemini'
 import {
-  saveAssessment as fbSave,
+  saveAssessmentWithQuestions,
   getSavedAssessments,
   deleteAssessment as fbDelete,
   updateAssessment as fbUpdate,
@@ -54,22 +54,23 @@ export function useAssessments(user: User | null, notify: NotifyFn) {
     try {
       const { id, createdAt, userId, ...data } = assessment
       if (!data.code) data.code = generateAssessmentCode(assessment.subject, assessment.difficulty)
-      const newId = await fbSave(data)
+
+      // Filter out questions already in the bank to avoid duplicates
       const existingIds = new Set(questions.map(q => q.id))
-      await Promise.all(
-        assessment.questions
-          .filter(q => !existingIds.has(q.id))
-          .map(q => {
-            const { id: _id, ...qData } = q
-            return fbSaveQ({
-              ...qData,
-              assessmentId: newId,
-              subject: assessment.subject,
-              topic: assessment.topic,
-              difficulty: assessment.difficulty,
-            })
-          })
-      )
+      const newQuestions = assessment.questions
+        .filter(q => !existingIds.has(q.id))
+        .map(q => {
+          const { id: _id, ...qData } = q
+          return {
+            ...qData,
+            subject: assessment.subject,
+            topic: assessment.topic,
+            difficulty: assessment.difficulty,
+          }
+        })
+
+      // Atomic: assessment + questions saved in a single batch commit
+      const newId = await saveAssessmentWithQuestions(data, newQuestions)
       notify('Assessment saved to library', 'success')
       return newId
     } catch (e) {
@@ -106,52 +107,62 @@ export function useAssessments(user: User | null, notify: NotifyFn) {
     id: string,
     data: Partial<Omit<Assessment, 'id' | 'userId' | 'createdAt'>>
   ) => {
+    // Optimistic update with rollback on failure
+    const original = assessments.find(x => x.id === id)
+    setAssessments(a => a.map(x => x.id === id ? { ...x, ...data } : x))
     try {
       await fbUpdate(id, data)
-      setAssessments(a => a.map(x => x.id === id ? { ...x, ...data } : x))
     } catch (e) {
+      setAssessments(a => a.map(x => x.id === id ? (original ?? x) : x))
       notify('Failed to update assessment', 'error')
     }
-  }, [notify])
+  }, [notify, assessments])
 
   const moveAssessment = useCallback(async (id: string, folderId: string | null) => {
+    const original = assessments.find(x => x.id === id)
+    setAssessments(a => a.map(x => x.id === id ? { ...x, folderId: folderId ?? undefined } : x))
     try {
       await fbMove(id, folderId)
-      setAssessments(a => a.map(x => x.id === id ? { ...x, folderId: folderId ?? undefined } : x))
     } catch (e) {
+      setAssessments(a => a.map(x => x.id === id ? (original ?? x) : x))
       notify('Failed to move assessment', 'error')
     }
-  }, [notify])
+  }, [notify, assessments])
 
   const updateQuestion = useCallback(async (
     id: string,
     updates: Partial<Omit<Question, 'id' | 'userId' | 'createdAt'>>
   ) => {
+    const original = questions.find(x => x.id === id)
+    setQuestions(q => q.map(x => x.id === id ? { ...x, ...updates } : x))
     try {
       await fbUpdateQ(id, updates)
-      setQuestions(q => q.map(x => x.id === id ? { ...x, ...updates } : x))
     } catch (e) {
+      setQuestions(q => q.map(x => x.id === id ? (original ?? x) : x))
       notify('Failed to update question', 'error')
     }
-  }, [notify])
+  }, [notify, questions])
 
   const deleteQuestion = useCallback(async (id: string) => {
     try {
       await fbDeleteQ(id)
       setQuestions(q => q.filter(x => x.id !== id))
+      notify('Question deleted', 'info')
     } catch (e) {
       notify('Failed to delete question', 'error')
     }
   }, [notify])
 
   const moveQuestion = useCallback(async (id: string, folderId: string | null) => {
+    const original = questions.find(x => x.id === id)
+    setQuestions(q => q.map(x => x.id === id ? { ...x, folderId: folderId ?? undefined } : x))
     try {
       await fbMoveQ(id, folderId)
-      setQuestions(q => q.map(x => x.id === id ? { ...x, folderId: folderId ?? undefined } : x))
     } catch (e) {
+      setQuestions(q => q.map(x => x.id === id ? (original ?? x) : x))
       notify('Failed to move question', 'error')
     }
-  }, [notify])
+  }, [notify, questions])
 
   const createFolder = useCallback(async (name: string) => {
     try {
@@ -174,31 +185,37 @@ export function useAssessments(user: User | null, notify: NotifyFn) {
   }, [notify])
 
   const renameFolder = useCallback(async (id: string, name: string) => {
+    const original = folders.find(x => x.id === id)
+    setFolders(f => f.map(x => x.id === id ? { ...x, name } : x))
     try {
       await fbUpdateFolder(id, name)
-      setFolders(f => f.map(x => x.id === id ? { ...x, name } : x))
     } catch (e) {
+      setFolders(f => f.map(x => x.id === id ? (original ?? x) : x))
       notify('Failed to rename folder', 'error')
     }
-  }, [notify])
+  }, [notify, folders])
 
   const togglePublicAssessment = useCallback(async (id: string, isPublic: boolean, preparedBy: string) => {
+    const original = assessments.find(x => x.id === id)
+    setAssessments(a => a.map(x => x.id === id ? { ...x, isPublic, preparedBy: isPublic ? preparedBy : undefined } : x))
     try {
       await fbTogglePublicAssessment(id, isPublic, preparedBy)
-      setAssessments(a => a.map(x => x.id === id ? { ...x, isPublic, preparedBy: isPublic ? preparedBy : undefined } : x))
     } catch (e) {
+      setAssessments(a => a.map(x => x.id === id ? (original ?? x) : x))
       notify('Failed to update visibility', 'error')
     }
-  }, [notify])
+  }, [notify, assessments])
 
   const togglePublicQuestion = useCallback(async (id: string, isPublic: boolean, preparedBy: string) => {
+    const original = questions.find(x => x.id === id)
+    setQuestions(q => q.map(x => x.id === id ? { ...x, isPublic, preparedBy: isPublic ? preparedBy : undefined } : x))
     try {
       await fbTogglePublicQuestion(id, isPublic, preparedBy)
-      setQuestions(q => q.map(x => x.id === id ? { ...x, isPublic, preparedBy: isPublic ? preparedBy : undefined } : x))
     } catch (e) {
+      setQuestions(q => q.map(x => x.id === id ? (original ?? x) : x))
       notify('Failed to update visibility', 'error')
     }
-  }, [notify])
+  }, [notify, questions])
 
   return {
     assessments, questions, folders, loading,

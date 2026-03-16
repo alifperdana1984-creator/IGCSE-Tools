@@ -12,6 +12,32 @@ import {
 } from '../lib/firebase'
 import { ref as storageRef, getBlob } from 'firebase/storage'
 
+/** Non-blocking base64 conversion using FileReader (avoids blocking the main thread). */
+function arrayBufferToBase64(buffer: ArrayBuffer): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const blob = new Blob([buffer])
+    const reader = new FileReader()
+    reader.onload = () => {
+      const dataUrl = reader.result as string
+      resolve(dataUrl.split(',')[1] ?? '')
+    }
+    reader.onerror = () => reject(reader.error)
+    reader.readAsDataURL(blob)
+  })
+}
+
+/** Wraps a promise with a timeout. Rejects with a descriptive error on expiry. */
+function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
+  return Promise.race([
+    promise,
+    new Promise<T>((_, reject) =>
+      setTimeout(() => reject(new Error(`${label} timed out after ${ms / 1000}s`)), ms)
+    ),
+  ])
+}
+
+const PROCESSING_TIMEOUT_MS = 90_000 // 90 seconds per AI processing call
+
 export function useResources(user: User | null, notify: NotifyFn) {
   const [resources, setResources] = useState<Resource[]>([])
   const [knowledgeBase, setKnowledgeBase] = useState<Resource[]>([])
@@ -90,7 +116,9 @@ export function useResources(user: User | null, notify: NotifyFn) {
       await fbUpdateGeminiUri(resource.id, uri)
       setResources(r => r.map(x => x.id === resource.id ? { ...x, geminiFileUri: uri } : x))
       setKnowledgeBase(kb => kb.map(x => x.id === resource.id ? { ...x, geminiFileUri: uri } : x))
-    } catch { /* non-critical, fail silently */ }
+    } catch {
+      // Non-critical: URI caching failure doesn't block generation
+    }
   }, [])
 
   const processSyllabus = useCallback(async (resource: Resource, apiKey: string): Promise<void> => {
@@ -104,37 +132,39 @@ export function useResources(user: User | null, notify: NotifyFn) {
       const sRef = storageRef(storage, resource.storagePath)
       const blob = await getBlob(sRef)
       const arrayBuffer = await blob.arrayBuffer()
-      const bytes = new Uint8Array(arrayBuffer)
-      let binary = ''
-      bytes.forEach(b => binary += String.fromCharCode(b))
-      const base64 = btoa(binary)
+      const base64 = await arrayBufferToBase64(arrayBuffer)
 
-      // Dynamically import to avoid circular deps
       const { GoogleGenAI, Type } = await import('@google/genai')
       const ai = new GoogleGenAI({ apiKey })
-      const response = await ai.models.generateContent({
-        model: 'gemini-2.5-flash',
-        contents: {
-          parts: [
-            { inlineData: { mimeType: resource.mimeType, data: base64 } },
-            { text: `Parse this Cambridge IGCSE syllabus for ${resource.subject}. Extract all learning objectives organized by topic. Return ONLY a JSON object where each key is a topic name and each value is a string with all learning objectives for that topic. Example: { "Cell Structure": "1.1 describe the structure...", "Enzymes": "2.1 describe enzyme action..." }` },
-          ]
-        },
-        config: {
-          responseMimeType: 'application/json',
-          responseSchema: {
-            type: Type.OBJECT,
-            additionalProperties: { type: Type.STRING },
+      const response = await withTimeout(
+        ai.models.generateContent({
+          model: 'gemini-2.5-flash',
+          contents: {
+            parts: [
+              { inlineData: { mimeType: resource.mimeType, data: base64 } },
+              { text: `Parse this Cambridge IGCSE syllabus for ${resource.subject}. Extract all learning objectives organized by topic. Return ONLY a JSON object where each key is a topic name and each value is a string with all learning objectives for that topic. Example: { "Cell Structure": "1.1 describe the structure...", "Enzymes": "2.1 describe enzyme action..." }` },
+            ]
           },
-        },
-      })
+          config: {
+            responseMimeType: 'application/json',
+            responseSchema: {
+              type: Type.OBJECT,
+              additionalProperties: { type: Type.STRING },
+            },
+          },
+        }),
+        PROCESSING_TIMEOUT_MS,
+        'Syllabus processing'
+      )
       const topics = JSON.parse(response.text || '{}') as Record<string, string>
       if (Object.keys(topics).length > 0) {
         await saveSyllabusCache(resource.id, resource.subject, topics)
         notify(`Syllabus "${resource.name}" processed — objectives cached`, 'success')
       }
     } catch (e) {
+      const msg = e instanceof Error ? e.message : 'Unknown error'
       console.warn('Syllabus processing failed:', e)
+      notify(`Syllabus processing failed: ${msg}`, 'error')
     } finally {
       setProcessingIds(s => { const n = new Set(s); n.delete(resource.id); return n })
     }
@@ -161,33 +191,36 @@ export function useResources(user: User | null, notify: NotifyFn) {
       const sRef = storageRef(storage, resource.storagePath)
       const blob = await getBlob(sRef)
       const arrayBuffer = await blob.arrayBuffer()
-      const bytes = new Uint8Array(arrayBuffer)
-      let binary = ''
-      bytes.forEach(b => binary += String.fromCharCode(b))
-      const base64 = btoa(binary)
+      const base64 = await arrayBufferToBase64(arrayBuffer)
 
       const { GoogleGenAI, Type } = await import('@google/genai')
       const ai = new GoogleGenAI({ apiKey })
-      const response = await ai.models.generateContent({
-        model: 'gemini-2.5-flash',
-        contents: {
-          parts: [
-            { inlineData: { mimeType: resource.mimeType, data: base64 } },
-            { text: `This is a Cambridge IGCSE ${resource.subject} past paper. Extract 8–12 representative question-and-answer examples that best demonstrate the style, phrasing, difficulty, and mark scheme format of this paper. For each example include: the question text, the command word used, the number of marks, and the mark scheme answer. Format as plain text. These examples will be used as style references for generating new questions — do not include full paper context, just the representative Q&A pairs.` },
-          ]
-        },
-        config: {
-          responseMimeType: 'text/plain',
-          maxOutputTokens: 4096,
-        },
-      })
+      const response = await withTimeout(
+        ai.models.generateContent({
+          model: 'gemini-2.5-flash',
+          contents: {
+            parts: [
+              { inlineData: { mimeType: resource.mimeType, data: base64 } },
+              { text: `This is a Cambridge IGCSE ${resource.subject} past paper. Extract 8–12 representative question-and-answer examples that best demonstrate the style, phrasing, difficulty, and mark scheme format of this paper. For each example include: the question text, the command word used, the number of marks, and the mark scheme answer. Format as plain text. These examples will be used as style references for generating new questions — do not include full paper context, just the representative Q&A pairs.` },
+            ]
+          },
+          config: {
+            responseMimeType: 'text/plain',
+            maxOutputTokens: 4096,
+          },
+        }),
+        PROCESSING_TIMEOUT_MS,
+        'Past paper processing'
+      )
       const examples = (response.text || '').trim()
       if (examples.length > 100) {
         await savePastPaperCache(resource.id, resource.subject, examples)
         notify(`Past paper "${resource.name}" processed — style examples cached`, 'success')
       }
     } catch (e) {
+      const msg = e instanceof Error ? e.message : 'Unknown error'
       console.warn('Past paper processing failed:', e)
+      notify(`Past paper processing failed: ${msg}`, 'error')
     } finally {
       setProcessingIds(s => { const n = new Set(s); n.delete(resource.id); return n })
     }
@@ -219,10 +252,7 @@ export function useResources(user: User | null, notify: NotifyFn) {
     const sRef = storageRef(storage, resource.storagePath)
     const blob = await getBlob(sRef)
     const arrayBuffer = await blob.arrayBuffer()
-    const bytes = new Uint8Array(arrayBuffer)
-    let binary = ''
-    bytes.forEach(b => binary += String.fromCharCode(b))
-    return btoa(binary)
+    return arrayBufferToBase64(arrayBuffer)
   }, [])
 
   const queueSyllabus = useCallback((resource: Resource, apiKey: string) => {

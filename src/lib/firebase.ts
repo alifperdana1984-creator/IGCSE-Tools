@@ -15,7 +15,8 @@ import {
   updateDoc,
   deleteField,
   getDoc,
-  setDoc
+  setDoc,
+  writeBatch,
 } from 'firebase/firestore';
 import { getStorage, ref as storageRef, uploadBytes, getDownloadURL, deleteObject } from 'firebase/storage';
 import firebaseConfig from '../../firebase-applet-config.json';
@@ -104,6 +105,37 @@ export const saveAssessment = async (
     handleFirestoreError(error, OperationType.CREATE, 'assessments')
     throw error
   }
+}
+
+/** Atomically saves assessment + questions in a single writeBatch commit.
+ *  Prevents orphaned assessments when question saving fails. */
+export const saveAssessmentWithQuestions = async (
+  assessmentData: Omit<Assessment, 'id' | 'createdAt' | 'userId'>,
+  questions: Array<Omit<Question, 'id' | 'createdAt' | 'userId'>>,
+): Promise<string> => {
+  if (!auth.currentUser) throw new Error('User must be authenticated to save')
+  const uid = auth.currentUser.uid
+  const batch = writeBatch(db)
+
+  const assessmentRef = doc(collection(db, 'assessments'))
+  const assessmentPayload: any = { ...assessmentData, userId: uid, createdAt: serverTimestamp() }
+  Object.keys(assessmentPayload).forEach(k => assessmentPayload[k] === undefined && delete assessmentPayload[k])
+  batch.set(assessmentRef, assessmentPayload)
+
+  for (const q of questions) {
+    const questionRef = doc(collection(db, 'questions'))
+    const questionPayload: any = { ...q, userId: uid, assessmentId: assessmentRef.id, createdAt: serverTimestamp() }
+    Object.keys(questionPayload).forEach(k => questionPayload[k] === undefined && delete questionPayload[k])
+    batch.set(questionRef, questionPayload)
+  }
+
+  try {
+    await batch.commit()
+  } catch (error) {
+    handleFirestoreError(error, OperationType.CREATE, 'assessments+questions')
+    throw error
+  }
+  return assessmentRef.id
 }
 
 export const getSavedAssessments = async (folderId?: string): Promise<Assessment[]> => {
@@ -249,6 +281,7 @@ export const saveSyllabusCache = async (
     subject,
     topics,
     processedAt: serverTimestamp(),
+    userId: auth.currentUser?.uid ?? null,
   })
 }
 
@@ -267,6 +300,7 @@ export const savePastPaperCache = async (
     subject,
     examples,
     processedAt: serverTimestamp(),
+    userId: auth.currentUser?.uid ?? null,
   })
 }
 
@@ -442,4 +476,39 @@ export const togglePublicQuestion = async (id: string, isPublic: boolean, prepar
   } catch (error) {
     handleFirestoreError(error, OperationType.UPDATE, `questions/${id}`)
   }
+}
+
+/** GDPR: delete all Firestore data owned by a user, then delete their Auth account.
+ *  Iterates in batches of 400 to stay under the 500-op batch limit. */
+export const deleteUserData = async (): Promise<void> => {
+  const user = auth.currentUser
+  if (!user) throw new Error('No authenticated user')
+  const uid = user.uid
+
+  const collectionsToClean: string[] = ['assessments', 'questions', 'folders', 'resources']
+  for (const col of collectionsToClean) {
+    const q = query(collection(db, col), where('userId', '==', uid))
+    let snap = await getDocs(q)
+    while (!snap.empty) {
+      const batch = writeBatch(db)
+      snap.docs.slice(0, 400).forEach(d => batch.delete(d.ref))
+      await batch.commit()
+      if (snap.docs.length <= 400) break
+      snap = await getDocs(q)
+    }
+  }
+
+  // Delete cache docs owned by the user
+  for (const col of ['syllabusCache', 'pastPaperCache']) {
+    const q = query(collection(db, col), where('userId', '==', uid))
+    const snap = await getDocs(q)
+    if (!snap.empty) {
+      const batch = writeBatch(db)
+      snap.docs.forEach(d => batch.delete(d.ref))
+      await batch.commit()
+    }
+  }
+
+  // Finally delete the Auth account
+  await user.delete()
 }
