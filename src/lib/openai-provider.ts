@@ -166,9 +166,7 @@ Respond with JSON matching this schema: ${QUESTION_SCHEMA}`
     }
   })
 
-  if (config.difficulty === 'Challenging' && questions.length > 0) {
-    questions = await critiqueForDifficulty(questions, config.subject, config.model, key, onRetry)
-  }
+  // critiqueForDifficulty omitted — extra API call hits rate limits on limited keys
 
   return questions
 }
