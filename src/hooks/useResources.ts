@@ -21,6 +21,8 @@ export function useResources(user: User | null, notify: NotifyFn) {
     try {
       const data = await getResources(subject)
       setResources(data)
+      // Auto-populate KB with all resources for the current subject
+      setKnowledgeBase(data)
     } catch (e) {
       notify('Failed to load resources', 'error')
     }
@@ -41,6 +43,7 @@ export function useResources(user: User | null, notify: NotifyFn) {
         resourceType
       )
       setResources(r => [resource, ...r])
+      setKnowledgeBase(kb => kb.find(x => x.id === resource.id) ? kb : [resource, ...kb])
       notify(`"${file.name}" saved to resources`, 'success')
       return resource
     } catch (e) {
