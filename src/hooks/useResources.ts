@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useRef } from 'react'
 import type { User } from 'firebase/auth'
 import type { Resource, ResourceType } from '../lib/types'
 import type { NotifyFn } from './useNotifications'
@@ -17,6 +17,25 @@ export function useResources(user: User | null, notify: NotifyFn) {
   const [knowledgeBase, setKnowledgeBase] = useState<Resource[]>([])
   const [uploading, setUploading] = useState(false)
   const [processingIds, setProcessingIds] = useState<Set<string>>(new Set())
+
+  // Sequential processing queue — avoids Gemini rate limits
+  const processingQueue = useRef<Array<() => Promise<void>>>([])
+  const queueRunning = useRef(false)
+
+  const enqueueProcessing = useCallback((task: () => Promise<void>) => {
+    processingQueue.current.push(task)
+    if (queueRunning.current) return
+    queueRunning.current = true
+    const runNext = async () => {
+      const next = processingQueue.current.shift()
+      if (!next) { queueRunning.current = false; return }
+      await next()
+      // 3s delay between tasks to stay within free tier rate limits
+      await new Promise(r => setTimeout(r, 3000))
+      runNext()
+    }
+    runNext()
+  }, [])
 
   const loadResources = useCallback(async (subject?: string) => {
     if (!user) return
@@ -206,10 +225,20 @@ export function useResources(user: User | null, notify: NotifyFn) {
     return btoa(binary)
   }, [])
 
+  const queueSyllabus = useCallback((resource: Resource, apiKey: string) => {
+    enqueueProcessing(() => processSyllabus(resource, apiKey))
+  }, [enqueueProcessing, processSyllabus])
+
+  const queuePastPaper = useCallback((resource: Resource, apiKey: string) => {
+    enqueueProcessing(() => processPastPaper(resource, apiKey))
+  }, [enqueueProcessing, processPastPaper])
+
   return {
     resources, knowledgeBase, uploading, processingIds,
     loadResources, uploadResource, deleteResource,
     addToKnowledgeBase, removeFromKnowledgeBase, getBase64,
-    updateResourceType, updateGeminiUri, processSyllabus, processPastPaper, toggleShared,
+    updateResourceType, updateGeminiUri, toggleShared,
+    processSyllabus: queueSyllabus,
+    processPastPaper: queuePastPaper,
   }
 }
