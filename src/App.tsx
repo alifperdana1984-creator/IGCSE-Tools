@@ -212,6 +212,7 @@ export default function App() {
   }, [view, selectedFolderId, user]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleGenerate = useCallback(() => {
+    setView('main')
     const effectiveModel = customModel.trim() || config.model
     generation.generate({ ...config, provider, model: effectiveModel, syllabusContext }, resources.knowledgeBase, resources.getBase64)
   }, [config, provider, customModel, syllabusContext, resources.knowledgeBase, resources.getBase64, generation])
@@ -427,6 +428,10 @@ export default function App() {
             onCreateAssessmentFromQuestions={handleCreateAssessmentFromQuestions}
             onAddQuestionsToAssessment={handleAddQuestionsToAssessment}
             onUpdateQuestion={library.updateQuestion}
+            currentUserId={user.uid}
+            currentUserName={user.displayName ?? user.email ?? 'Unknown'}
+            onTogglePublicAssessment={(id, isPublic) => library.togglePublicAssessment(id, isPublic, user.displayName ?? user.email ?? 'Unknown')}
+            onTogglePublicQuestion={(id, isPublic) => library.togglePublicQuestion(id, isPublic, user.displayName ?? user.email ?? 'Unknown')}
           />
         ) : (
           <AssessmentView

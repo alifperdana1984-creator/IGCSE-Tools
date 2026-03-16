@@ -25,6 +25,8 @@ export interface Assessment {
   userId: string
   folderId?: string
   createdAt: Timestamp
+  isPublic?: boolean
+  preparedBy?: string
 }
 
 export interface Question extends QuestionItem {
@@ -35,6 +37,8 @@ export interface Question extends QuestionItem {
   userId: string
   folderId?: string
   createdAt: Timestamp
+  isPublic?: boolean
+  preparedBy?: string
 }
 
 export interface Folder {

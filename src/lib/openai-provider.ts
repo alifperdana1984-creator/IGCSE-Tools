@@ -67,8 +67,9 @@ Cambridge Command Words:
 
 function sanitize(q: any): Omit<QuestionItem, 'id'> {
   const fix = (s: string) => (s ?? '').replace(/\\n/g, '\n')
+  const stripNum = (s: string) => fix(s).replace(/^(\*{0,2})\s*\d+[.)]\s*\*{0,2}\s*/, '$1').trimStart()
   return {
-    text: fix(q.text),
+    text: stripNum(q.text),
     answer: fix(q.answer),
     markScheme: fix(q.markScheme),
     marks: Number(q.marks) || 1,
@@ -102,15 +103,7 @@ Rules:
 1. Generate EXACTLY ${config.count} questions.
 2. Each question must have: text (markdown, bold), answer, markScheme, marks (integer), commandWord, type (mcq/short_answer/structured), hasDiagram (boolean).
 3. CRITICAL: ALL mathematical expressions, variables, equations, and formulas MUST be wrapped in LaTeX inline delimiters: $x^2$, $3x^2 - 5x + 2 = 0$, $\frac{a}{b}$, $H_2O$. NEVER write math as plain text.
-4. CRITICAL FOR MCQ: If type is "mcq", the question "text" field MUST include 4 labelled options formatted as:
-   A) option text
-
-   B) option text
-
-   C) option text
-
-   D) option text
-   The correct answer in "answer" field must be "A", "B", "C", or "D" only.
+4. FOR MCQ QUESTIONS: The "text" field must end with the 4 options on separate lines: "\\n\\nA) ...\\n\\nB) ...\\n\\nC) ...\\n\\nD) ...". The "answer" field must be ONLY "A", "B", "C", or "D".
 5. Add **Syllabus Reference:** at end of each question text.
 
 Respond with JSON matching this schema: ${QUESTION_SCHEMA}`

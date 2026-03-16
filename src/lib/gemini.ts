@@ -132,15 +132,7 @@ Rules:
 2. Each question must have: text (markdown, bold), answer, markScheme, marks (integer), commandWord, type (mcq/short_answer/structured), hasDiagram (boolean).
 3. For diagrams, include SVG inside the 'text' field as \`\`\`svg ... \`\`\` using camelCase attributes.
 4. CRITICAL: ALL mathematical expressions, variables, equations, and formulas MUST be wrapped in LaTeX inline delimiters: $x^2$, $3x^2 - 5x + 2 = 0$, $\frac{a}{b}$, $H_2O$. NEVER write math as plain text.
-5. CRITICAL FOR MCQ: If type is "mcq", the question "text" field MUST include 4 labelled options formatted as:
-   A) option text
-
-   B) option text
-
-   C) option text
-
-   D) option text
-   The correct answer in "answer" field must be "A", "B", "C", or "D" only.
+5. FOR MCQ QUESTIONS: The "text" field must end with the 4 options on separate lines: "\\n\\nA) ...\\n\\nB) ...\\n\\nC) ...\\n\\nD) ...". The "answer" field must be ONLY "A", "B", "C", or "D".
 6. Add **Syllabus Reference:** at end of each question text.`
 
   const parts: any[] = []
@@ -328,8 +320,9 @@ export async function getStudentFeedback(
 }
 
 function sanitizeQuestion(q: Omit<QuestionItem, 'id'>): Omit<QuestionItem, 'id'> {
-  const fix = (s: string) => s.replace(/\\n/g, '\n')
-  return { ...q, text: fix(q.text), answer: fix(q.answer), markScheme: fix(q.markScheme) }
+  const fix = (s: string) => (s ?? '').replace(/\\n/g, '\n')
+  const stripNum = (s: string) => fix(s).replace(/^(\*{0,2})\s*\d+[.)]\s*\*{0,2}\s*/, '$1').trimStart()
+  return { ...q, text: stripNum(q.text), answer: fix(q.answer), markScheme: fix(q.markScheme) }
 }
 
 function safeJsonParse(text: string) {

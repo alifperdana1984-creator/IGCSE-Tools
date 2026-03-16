@@ -4,7 +4,7 @@ import remarkMath from 'remark-math'
 import remarkGfm from 'remark-gfm'
 import rehypeKatex from 'rehype-katex'
 import rehypeRaw from 'rehype-raw'
-import { Folder as FolderIcon, Trash2, Plus, Library as LibraryIcon, Pencil, X, Check, Eye, FilePlus, FolderPlus, Loader2, Calendar } from 'lucide-react'
+import { Folder as FolderIcon, Trash2, Plus, Library as LibraryIcon, Pencil, X, Check, Eye, FilePlus, FolderPlus, Loader2, Calendar, Globe } from 'lucide-react'
 import type { Assessment, Question, Folder } from '../../lib/types'
 import { parseSVGSafe } from '../../lib/svg'
 import { RichEditor } from '../RichEditor'
@@ -28,6 +28,10 @@ interface Props {
   onCreateAssessmentFromQuestions: (questions: Question[]) => void
   onAddQuestionsToAssessment: (assessmentId: string, questions: Question[]) => void
   onUpdateQuestion: (id: string, updates: Partial<Question>) => void
+  currentUserId: string
+  currentUserName: string
+  onTogglePublicAssessment: (id: string, isPublic: boolean) => void
+  onTogglePublicQuestion: (id: string, isPublic: boolean) => void
 }
 
 const svgComponents = {
@@ -204,6 +208,8 @@ export function Library({
   selectedFolderId, onSelectFolder,
   onCreateAssessmentFromQuestions, onAddQuestionsToAssessment,
   onUpdateQuestion,
+  currentUserId, currentUserName,
+  onTogglePublicAssessment, onTogglePublicQuestion,
 }: Props) {
   const [bankView, setBankView] = useState<'assessments' | 'questions'>('assessments')
   const [newFolderName, setNewFolderName] = useState('')
@@ -435,9 +441,21 @@ export function Library({
                           <div className="flex items-center gap-2">
                             <span className="text-sm font-medium text-stone-800">{a.topic}</span>
                             {a.code && <span className="text-xs font-mono bg-stone-100 text-stone-500 px-1.5 py-0.5 rounded">{a.code}</span>}
+                            {a.userId === currentUserId && (
+                              <button
+                                onClick={e => { e.stopPropagation(); onTogglePublicAssessment(a.id, !a.isPublic) }}
+                                className={`p-1 rounded ${a.isPublic ? 'text-emerald-600 hover:text-emerald-700' : 'text-stone-300 hover:text-stone-500'}`}
+                                title={a.isPublic ? 'Public — click to make private' : 'Make public'}
+                              >
+                                <Globe className="w-3.5 h-3.5" />
+                              </button>
+                            )}
                           </div>
                           <div className="text-xs text-stone-500 flex items-center gap-1.5 flex-wrap">
                             <span>{a.subject} · {a.difficulty} · {a.questions.length}q</span>
+                            {a.userId !== currentUserId && a.isPublic && a.preparedBy && (
+                              <span className="text-xs text-emerald-600">by {a.preparedBy}</span>
+                            )}
                             <span className="flex items-center gap-1 text-stone-400">
                               <Calendar className="w-3 h-3" />
                               {a.createdAt.toDate().toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}
@@ -449,16 +467,20 @@ export function Library({
                       )}
                     </div>
                     <div className="flex items-center gap-1 shrink-0">
-                      <button onClick={() => { setRenamingId(a.id); setRenameValue(a.topic) }} className="p-1 text-stone-400 hover:text-stone-600"><Pencil className="w-3.5 h-3.5" /></button>
-                      <select
-                        value={a.folderId ?? ''}
-                        onChange={e => onMoveAssessment(a.id, e.target.value || null)}
-                        className="text-xs border border-stone-200 rounded px-1 py-0.5 text-stone-600"
-                      >
-                        <option value="">No folder</option>
-                        {folders.map(f => <option key={f.id} value={f.id}>{f.name}</option>)}
-                      </select>
-                      <button onClick={() => setConfirmDelete({ type: 'assessment', id: a.id, label: a.topic + (a.code ? ` (${a.code})` : '') })} className="p-1 text-red-400 hover:text-red-600"><Trash2 className="w-3.5 h-3.5" /></button>
+                      {a.userId === currentUserId && (
+                        <>
+                          <button onClick={() => { setRenamingId(a.id); setRenameValue(a.topic) }} className="p-1 text-stone-400 hover:text-stone-600"><Pencil className="w-3.5 h-3.5" /></button>
+                          <select
+                            value={a.folderId ?? ''}
+                            onChange={e => onMoveAssessment(a.id, e.target.value || null)}
+                            className="text-xs border border-stone-200 rounded px-1 py-0.5 text-stone-600"
+                          >
+                            <option value="">No folder</option>
+                            {folders.map(f => <option key={f.id} value={f.id}>{f.name}</option>)}
+                          </select>
+                          <button onClick={() => setConfirmDelete({ type: 'assessment', id: a.id, label: a.topic + (a.code ? ` (${a.code})` : '') })} className="p-1 text-red-400 hover:text-red-600"><Trash2 className="w-3.5 h-3.5" /></button>
+                        </>
+                      )}
                     </div>
                   </div>
                 </div>
@@ -509,6 +531,9 @@ export function Library({
                           'bg-stone-100 text-stone-500'
                         }`}>{q.type === 'mcq' ? 'MCQ' : q.type === 'structured' ? 'Structured' : 'Short Answer'}</span>
                         {q.code && <span className="font-mono bg-stone-100 px-1 rounded text-stone-500">{q.code}</span>}
+                        {q.userId !== currentUserId && q.isPublic && q.preparedBy && (
+                          <span className="ml-1 text-emerald-600">by {q.preparedBy}</span>
+                        )}
                       </div>
                     </div>
 
@@ -521,17 +546,30 @@ export function Library({
                       >
                         <Eye className="w-3.5 h-3.5" />
                       </button>
-                      <select
-                        value={q.folderId ?? ''}
-                        onChange={e => onMoveQuestion(q.id, e.target.value || null)}
-                        className="text-xs border border-stone-200 rounded px-1 py-0.5 text-stone-600"
-                      >
-                        <option value="">No folder</option>
-                        {folders.map(f => <option key={f.id} value={f.id}>{f.name}</option>)}
-                      </select>
-                      <button onClick={() => setConfirmDelete({ type: 'question', id: q.id, label: q.code ?? q.text.substring(0, 40) })} className="p-1 text-red-400 hover:text-red-600">
-                        <Trash2 className="w-3 h-3" />
-                      </button>
+                      {q.userId === currentUserId && (
+                        <button
+                          onClick={e => { e.stopPropagation(); onTogglePublicQuestion(q.id, !q.isPublic) }}
+                          className={`p-1 rounded ${q.isPublic ? 'text-emerald-600 hover:text-emerald-700' : 'text-stone-300 hover:text-stone-500'}`}
+                          title={q.isPublic ? 'Public' : 'Make public'}
+                        >
+                          <Globe className="w-3.5 h-3.5" />
+                        </button>
+                      )}
+                      {q.userId === currentUserId && (
+                        <>
+                          <select
+                            value={q.folderId ?? ''}
+                            onChange={e => onMoveQuestion(q.id, e.target.value || null)}
+                            className="text-xs border border-stone-200 rounded px-1 py-0.5 text-stone-600"
+                          >
+                            <option value="">No folder</option>
+                            {folders.map(f => <option key={f.id} value={f.id}>{f.name}</option>)}
+                          </select>
+                          <button onClick={() => setConfirmDelete({ type: 'question', id: q.id, label: q.code ?? q.text.substring(0, 40) })} className="p-1 text-red-400 hover:text-red-600">
+                            <Trash2 className="w-3 h-3" />
+                          </button>
+                        </>
+                      )}
                     </div>
                   </div>
                 )

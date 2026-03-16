@@ -44,14 +44,16 @@ service cloud.firestore {
     }
 
     function isValidAssessment(data) {
-      return hasOnlyAllowedFields(['subject', 'topic', 'difficulty', 'questions', 'code', 'userId', 'createdAt', 'folderId']) &&
+      return hasOnlyAllowedFields(['subject', 'topic', 'difficulty', 'questions', 'code', 'userId', 'createdAt', 'folderId', 'isPublic', 'preparedBy']) &&
              data.subject is string && data.subject.size() > 0 && data.subject.size() < 100 &&
              data.topic is string && data.topic.size() > 0 && data.topic.size() < 200 &&
              data.questions is list &&
              data.userId == request.auth.uid &&
              data.createdAt is timestamp &&
              (!('folderId' in data) || data.folderId == null || data.folderId is string) &&
-             (!('difficulty' in data) || data.difficulty == null || data.difficulty is string);
+             (!('difficulty' in data) || data.difficulty == null || data.difficulty is string) &&
+             (!('isPublic' in data) || data.isPublic == null || data.isPublic is bool) &&
+             (!('preparedBy' in data) || data.preparedBy == null || data.preparedBy is string);
     }
 
     function isValidFolder(data) {
@@ -77,7 +79,7 @@ service cloud.firestore {
     }
 
     function isValidQuestion(data) {
-      return hasOnlyAllowedFields(['subject', 'topic', 'difficulty', 'text', 'answer', 'markScheme', 'marks', 'commandWord', 'type', 'hasDiagram', 'code', 'userId', 'createdAt', 'assessmentId', 'folderId']) &&
+      return hasOnlyAllowedFields(['subject', 'topic', 'difficulty', 'text', 'answer', 'markScheme', 'marks', 'commandWord', 'type', 'hasDiagram', 'code', 'userId', 'createdAt', 'assessmentId', 'folderId', 'isPublic', 'preparedBy']) &&
              data.subject is string && data.subject.size() > 0 &&
              data.topic is string && data.topic.size() > 0 &&
              data.text is string && data.text.size() > 0 && data.text.size() < 10000 &&
@@ -90,18 +92,20 @@ service cloud.firestore {
              (!('answer' in data) || data.answer == null || data.answer is string) &&
              (!('markScheme' in data) || data.markScheme == null || data.markScheme is string) &&
              (!('assessmentId' in data) || data.assessmentId == null || data.assessmentId is string) &&
-             (!('folderId' in data) || data.folderId == null || data.folderId is string);
+             (!('folderId' in data) || data.folderId == null || data.folderId is string) &&
+             (!('isPublic' in data) || data.isPublic == null || data.isPublic is bool) &&
+             (!('preparedBy' in data) || data.preparedBy == null || data.preparedBy is string);
     }
 
     match /assessments/{assessmentId} {
-      allow read: if isAuthenticated() && resource.data.userId == request.auth.uid;
+      allow read: if isAuthenticated() && (resource.data.userId == request.auth.uid || resource.data.isPublic == true);
       allow create: if isAuthenticated() && isValidAssessment(request.resource.data);
       allow update: if isAuthenticated() && resource.data.userId == request.auth.uid && isValidAssessment(request.resource.data);
       allow delete: if isAuthenticated() && resource.data.userId == request.auth.uid;
     }
 
     match /questions/{questionId} {
-      allow read: if isAuthenticated() && resource.data.userId == request.auth.uid;
+      allow read: if isAuthenticated() && (resource.data.userId == request.auth.uid || resource.data.isPublic == true);
       allow create: if isAuthenticated() && isValidQuestion(request.resource.data);
       allow update: if isAuthenticated() && resource.data.userId == request.auth.uid && isValidQuestion(request.resource.data);
       allow delete: if isAuthenticated() && resource.data.userId == request.auth.uid;

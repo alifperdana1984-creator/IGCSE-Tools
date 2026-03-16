@@ -18,6 +18,8 @@ import {
   getFolders,
   deleteFolder as fbDeleteFolder,
   updateFolder as fbUpdateFolder,
+  togglePublicAssessment as fbTogglePublicAssessment,
+  togglePublicQuestion as fbTogglePublicQuestion,
 } from '../lib/firebase'
 
 export function useAssessments(user: User | null, notify: NotifyFn) {
@@ -180,11 +182,30 @@ export function useAssessments(user: User | null, notify: NotifyFn) {
     }
   }, [notify])
 
+  const togglePublicAssessment = useCallback(async (id: string, isPublic: boolean, preparedBy: string) => {
+    try {
+      await fbTogglePublicAssessment(id, isPublic, preparedBy)
+      setAssessments(a => a.map(x => x.id === id ? { ...x, isPublic, preparedBy: isPublic ? preparedBy : undefined } : x))
+    } catch (e) {
+      notify('Failed to update visibility', 'error')
+    }
+  }, [notify])
+
+  const togglePublicQuestion = useCallback(async (id: string, isPublic: boolean, preparedBy: string) => {
+    try {
+      await fbTogglePublicQuestion(id, isPublic, preparedBy)
+      setQuestions(q => q.map(x => x.id === id ? { ...x, isPublic, preparedBy: isPublic ? preparedBy : undefined } : x))
+    } catch (e) {
+      notify('Failed to update visibility', 'error')
+    }
+  }, [notify])
+
   return {
     assessments, questions, folders, loading,
     loadAll, saveAssessment, saveQuestions,
     deleteAssessment, updateAssessment, moveAssessment,
     deleteQuestion, updateQuestion, moveQuestion,
     createFolder, deleteFolder, renameFolder,
+    togglePublicAssessment, togglePublicQuestion,
   }
 }
