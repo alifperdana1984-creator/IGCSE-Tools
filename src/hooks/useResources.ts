@@ -113,7 +113,7 @@ export function useResources(user: User | null, notify: NotifyFn) {
       const { GoogleGenAI, Type } = await import('@google/genai')
       const ai = new GoogleGenAI({ apiKey })
       const response = await ai.models.generateContent({
-        model: 'gemini-2.0-flash-lite',
+        model: 'gemini-2.5-flash-preview-05-20',
         contents: {
           parts: [
             { inlineData: { mimeType: resource.mimeType, data: base64 } },
@@ -169,7 +169,7 @@ export function useResources(user: User | null, notify: NotifyFn) {
       const { GoogleGenAI, Type } = await import('@google/genai')
       const ai = new GoogleGenAI({ apiKey })
       const response = await ai.models.generateContent({
-        model: 'gemini-2.0-flash-lite',
+        model: 'gemini-2.5-flash-preview-05-20',
         contents: {
           parts: [
             { inlineData: { mimeType: resource.mimeType, data: base64 } },
