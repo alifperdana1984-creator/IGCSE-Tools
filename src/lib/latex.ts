@@ -10,7 +10,7 @@ export function preprocessLatex(text: string): string {
   // Step 0: escape currency dollar signs ($5000, $3.50) but NOT math blocks like $1000 \times 4$
   // Currency pattern: $digits followed by space+letter (plain English word, not LaTeX command/operator)
   // "$5000 at a rate" → \$5000   |   "$1000 \times" → unchanged   |   "$4$" → unchanged
-  let result = text.replace(/\$(\d[\d,.]*)(?=\s[a-zA-Z])/g, '\\$$1')
+  let result = text.replace(/\$(\d[\d,.]*)(?=\s[a-zA-Z])/g, (_, digits) => `\\$${digits}`)
 
   // Step 1: merge accidentally split adjacent math blocks
   result = result.replace(/\$([^$\n]+?)\$\$([^$\n]+?)\$/g, (_m, a, b) => `$${a}${b}$`)
