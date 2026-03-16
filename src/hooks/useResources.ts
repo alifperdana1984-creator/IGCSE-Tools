@@ -207,10 +207,9 @@ export function useResources(user: User | null, notify: NotifyFn) {
   }, [])
 
   return {
-    resources, knowledgeBase, uploading,
+    resources, knowledgeBase, uploading, processingIds,
     loadResources, uploadResource, deleteResource,
     addToKnowledgeBase, removeFromKnowledgeBase, getBase64,
     updateResourceType, updateGeminiUri, processSyllabus, processPastPaper, toggleShared,
-    uploading, processingIds,
   }
 }

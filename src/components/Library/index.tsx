@@ -475,8 +475,7 @@ export function Library({
                     </div>
                   </div>
                 </div>
-              ))}
-              })}
+              )})}
               {filteredAssessments.length === 0 && !loading && (
                 <div className="text-stone-400 text-sm text-center py-8">
                   {subjectFilter ? `No ${subjectFilter} assessments found.` : 'No assessments saved yet.'}
