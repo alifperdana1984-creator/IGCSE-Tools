@@ -1,4 +1,5 @@
 import type { QuestionItem, Assessment, AnalyzeFileResult, GenerationConfig, AIError } from './types'
+import type { Reference } from './ai'
 import { withRetry } from './gemini'
 
 const OPENAI_URL = 'https://api.openai.com/v1/chat/completions'
@@ -93,11 +94,33 @@ function generateCode(subject: string): string {
   return `${subj}-?-${shortId}`
 }
 
+function buildOpenAIReferenceContext(references: Reference[]): string {
+  const pastPapers = references.filter(r => r.resourceType === 'past_paper')
+  const syllabuses = references.filter(r => r.resourceType === 'syllabus')
+  let context = ''
+  if (pastPapers.length > 0) {
+    context += `\nIMPORTANT: You have been provided ${pastPapers.length} authentic Cambridge IGCSE past paper(s) as image references. Match their exact question style, difficulty, command words, and mark allocation.\n`
+  }
+  if (syllabuses.length > 0) {
+    const cached = syllabuses.filter(r => r.syllabusText)
+    if (cached.length > 0) {
+      context += `\nOFFICIAL SYLLABUS OBJECTIVES — only generate questions aligned to these:\n`
+      cached.forEach(r => { context += r.syllabusText + '\n' })
+    } else {
+      context += `\nIMPORTANT: An official Cambridge IGCSE syllabus has been provided. Only generate questions that cover the stated learning objectives.\n`
+    }
+  }
+  return context
+}
+
 export async function generateTest(
-  config: GenerationConfig & { references?: { data: string; mimeType: string }[]; apiKey?: string },
+  config: GenerationConfig & { references?: Reference[]; apiKey?: string },
   onRetry?: (attempt: number) => void
 ): Promise<QuestionItem[]> {
   const key = config.apiKey ?? ''
+  const refContext = config.references && config.references.length > 0
+    ? buildOpenAIReferenceContext(config.references)
+    : ''
   const prompt = `Generate a Cambridge IGCSE ${config.subject} assessment.
 Topic: ${config.topic}
 Difficulty: ${config.difficulty}
@@ -105,7 +128,7 @@ Number of Questions: ${config.count}
 Question Type: ${config.type}
 Calculator: ${config.calculator ? 'Allowed' : 'Not Allowed'}
 ${config.syllabusContext ? `Syllabus Context: ${config.syllabusContext}` : ''}
-
+${refContext}
 Rules:
 1. Generate EXACTLY ${config.count} questions.
 2. Each question must have: text (markdown, bold), answer, markScheme, marks (integer), commandWord, type (mcq/short_answer/structured), hasDiagram (boolean).
@@ -115,8 +138,16 @@ Rules:
 
 Respond with JSON matching this schema: ${QUESTION_SCHEMA}`
 
+  // For OpenAI, include image references (PDFs not supported in vision API)
+  const imageRefs = config.references?.filter(r => r.mimeType.startsWith('image/')) ?? []
+  const userContent: any[] = imageRefs.map(ref => ({
+    type: 'image_url',
+    image_url: { url: `data:${ref.mimeType};base64,${ref.data.split(',')[1] ?? ref.data}` },
+  }))
+  userContent.push({ type: 'text', text: prompt })
+
   const raw = await withRetry(() =>
-    openaiChat([{ role: 'user', content: prompt }], config.model, key, buildSystemPrompt(config.subject)),
+    openaiChat([{ role: 'user', content: userContent }], config.model, key, buildSystemPrompt(config.subject)),
     3, onRetry
   )
 
@@ -199,7 +230,7 @@ export async function analyzeFile(
   subject: string,
   count: number,
   model: string,
-  references?: { data: string; mimeType: string }[],
+  references?: Reference[],
   apiKey?: string
 ): Promise<AnalyzeFileResult> {
   const isPdf = mimeType === 'application/pdf'

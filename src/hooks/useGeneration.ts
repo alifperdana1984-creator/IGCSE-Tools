@@ -3,10 +3,93 @@ import type { Assessment, QuestionItem, AnalyzeFileResult, GenerationConfig, AIE
 import type { AIProvider } from '../lib/providers'
 import type { NotifyFn } from './useNotifications'
 import { generateTest, auditTest, getStudentFeedback as aiFeedback, analyzeFile as aiAnalyze } from '../lib/ai'
+import { uploadToGeminiFileApi } from '../lib/gemini'
+import { getSyllabusCache } from '../lib/firebase'
 import { Timestamp } from 'firebase/firestore'
 import { auth } from '../lib/firebase'
 
-export function useGeneration(notify: NotifyFn, provider: AIProvider = 'gemini', apiKey?: string) {
+const GEMINI_URI_VALID_MS = 46 * 60 * 60 * 1000
+
+async function buildReferences(
+  knowledgeBaseResources: Resource[],
+  getBase64: (r: Resource) => Promise<string>,
+  provider: AIProvider,
+  apiKey?: string,
+  updateGeminiUri?: (r: Resource, uri: string) => Promise<void>
+) {
+  return Promise.all(
+    knowledgeBaseResources.map(async r => {
+      // For Gemini: try to use File API URI instead of re-uploading base64 each time
+      if (provider === 'gemini' && apiKey) {
+        const uriAge = r.geminiFileUploadedAt
+          ? Date.now() - r.geminiFileUploadedAt.toMillis()
+          : Infinity
+        if (r.geminiFileUri && uriAge < GEMINI_URI_VALID_MS) {
+          // Valid URI — skip base64 download entirely
+          return {
+            data: '',
+            mimeType: r.mimeType,
+            resourceType: r.resourceType,
+            name: r.name,
+            geminiFileUri: r.geminiFileUri,
+            geminiFileUploadedAt: r.geminiFileUploadedAt?.toMillis(),
+          }
+        }
+        // For syllabus: check text cache before downloading the file
+        if (r.resourceType === 'syllabus') {
+          try {
+            const cache = await getSyllabusCache(r.id)
+            if (cache && Object.keys(cache.topics).length > 0) {
+              const syllabusText = Object.entries(cache.topics)
+                .map(([topic, objectives]) => `### ${topic}\n${objectives}`)
+                .join('\n\n')
+              return { data: '', mimeType: r.mimeType, resourceType: 'syllabus', name: r.name, syllabusText }
+            }
+          } catch { /* fall through to file upload */ }
+        }
+        // URI missing or expired — download, upload to File API, save URI
+        try {
+          const base64 = await getBase64(r)
+          const uri = await uploadToGeminiFileApi(base64, r.mimeType, r.name, apiKey)
+          await updateGeminiUri?.(r, uri)
+          return {
+            data: base64,
+            mimeType: r.mimeType,
+            resourceType: r.resourceType,
+            name: r.name,
+            geminiFileUri: uri,
+            geminiFileUploadedAt: Date.now(),
+          }
+        } catch {
+          // File API failed — fall back to inline base64
+          const base64 = await getBase64(r)
+          return { data: base64, mimeType: r.mimeType, resourceType: r.resourceType, name: r.name }
+        }
+      }
+      // Non-Gemini provider: for syllabus check cache first
+      if (r.resourceType === 'syllabus') {
+        try {
+          const cache = await getSyllabusCache(r.id)
+          if (cache && Object.keys(cache.topics).length > 0) {
+            const syllabusText = Object.entries(cache.topics)
+              .map(([topic, objectives]) => `### ${topic}\n${objectives}`)
+              .join('\n\n')
+            return { data: '', mimeType: r.mimeType, resourceType: 'syllabus', name: r.name, syllabusText }
+          }
+        } catch { /* fall through */ }
+      }
+      const base64 = await getBase64(r)
+      return { data: base64, mimeType: r.mimeType, resourceType: r.resourceType, name: r.name }
+    })
+  )
+}
+
+export function useGeneration(
+  notify: NotifyFn,
+  provider: AIProvider = 'gemini',
+  apiKey?: string,
+  updateGeminiUri?: (r: Resource, uri: string) => Promise<void>
+) {
   const [generatedAssessment, setGeneratedAssessment] = useState<Assessment | null>(null)
   const [analysisText, setAnalysisText] = useState<string | null>(null)
   const [isGenerating, setIsGenerating] = useState(false)
@@ -23,11 +106,8 @@ export function useGeneration(notify: NotifyFn, provider: AIProvider = 'gemini',
     setRetryCount(0)
     setError(null)
     try {
-      const references = await Promise.all(
-        knowledgeBaseResources.map(async r => ({
-          data: await getBase64(r),
-          mimeType: r.mimeType,
-        }))
+      const references = await buildReferences(
+        knowledgeBaseResources, getBase64, provider, apiKey, updateGeminiUri
       )
       const questions = await generateTest({ ...config, references, apiKey }, (attempt) => {
         setRetryCount(attempt)
@@ -68,11 +148,8 @@ export function useGeneration(notify: NotifyFn, provider: AIProvider = 'gemini',
     setIsGenerating(true)
     setError(null)
     try {
-      const references = await Promise.all(
-        knowledgeBaseResources.map(async r => ({
-          data: await getBase64(r),
-          mimeType: r.mimeType,
-        }))
+      const references = await buildReferences(
+        knowledgeBaseResources, getBase64, provider, apiKey, updateGeminiUri
       )
       const result: AnalyzeFileResult = await aiAnalyze(
         file.base64,

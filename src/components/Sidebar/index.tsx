@@ -1,9 +1,9 @@
 import React, { useRef, useState, useEffect } from 'react'
 import {
   BrainCircuit, Calculator, Loader2, Database, Trash2, Plus,
-  KeyRound, Eye, EyeOff, ChevronDown, ChevronRight, ExternalLink,
+  KeyRound, Eye, EyeOff, ChevronDown, ChevronRight, ExternalLink, FileText, BookOpen, File,
 } from 'lucide-react'
-import type { GenerationConfig, Resource } from '../../lib/types'
+import type { GenerationConfig, Resource, ResourceType } from '../../lib/types'
 import type { AIProvider } from '../../lib/providers'
 import {
   IGCSE_SUBJECTS, IGCSE_TOPICS, DIFFICULTY_LEVELS,
@@ -24,10 +24,11 @@ interface Props {
   retryCount: number
   resources: Resource[]
   knowledgeBase: Resource[]
-  onUploadResource: (file: File, subject: string) => void
+  onUploadResource: (file: File, subject: string, resourceType?: ResourceType) => void
   onAddToKB: (resource: Resource) => void
   onRemoveFromKB: (id: string) => void
   onDeleteResource: (resource: Resource) => void
+  onUpdateResourceType: (resource: Resource, type: ResourceType) => void
   studentMode: boolean
   onStudentModeToggle: () => void
   syllabusContext: string
@@ -43,9 +44,27 @@ interface Props {
   onApiSettingsOpenChange?: (open: boolean) => void
 }
 
+const RESOURCE_TYPE_LABELS: Record<ResourceType, string> = {
+  past_paper: 'Past Paper',
+  syllabus: 'Syllabus',
+  other: 'Other',
+}
+
+const RESOURCE_TYPE_ICONS: Record<ResourceType, React.ReactNode> = {
+  past_paper: <FileText className="w-2.5 h-2.5" />,
+  syllabus: <BookOpen className="w-2.5 h-2.5" />,
+  other: <File className="w-2.5 h-2.5" />,
+}
+
+const RESOURCE_TYPE_COLORS: Record<ResourceType, string> = {
+  past_paper: 'bg-blue-100 text-blue-700',
+  syllabus: 'bg-purple-100 text-purple-700',
+  other: 'bg-stone-100 text-stone-500',
+}
+
 export function Sidebar({
   config, onConfigChange, onGenerate, isGenerating, isAuditing, retryCount,
-  resources, knowledgeBase, onUploadResource, onAddToKB, onRemoveFromKB, onDeleteResource,
+  resources, knowledgeBase, onUploadResource, onAddToKB, onRemoveFromKB, onDeleteResource, onUpdateResourceType,
   studentMode, onStudentModeToggle, syllabusContext, onSyllabusContextChange,
   provider, onProviderChange, apiKeys, onApiKeyChange, customModel, onCustomModelChange,
   apiSettingsOpen, onApiSettingsOpenChange,
@@ -53,6 +72,8 @@ export function Sidebar({
   const fileInputRef = useRef<HTMLInputElement>(null)
   const [showApiKey, setShowApiKey] = useState(false)
   const [settingsOpen, setSettingsOpen] = useState(false)
+  const [pendingFile, setPendingFile] = useState<File | null>(null)
+  const [pendingType, setPendingType] = useState<ResourceType>('other')
 
   useEffect(() => {
     if (apiSettingsOpen) setSettingsOpen(true)
@@ -250,28 +271,84 @@ export function Sidebar({
               className="hidden"
               onChange={e => {
                 const file = e.target.files?.[0]
-                if (file) onUploadResource(file, config.subject)
+                if (file) {
+                  setPendingFile(file)
+                  // Auto-detect type from filename
+                  const name = file.name.toLowerCase()
+                  if (name.includes('syllabus') || name.includes('spec')) setPendingType('syllabus')
+                  else if (name.includes('paper') || name.includes('past') || name.includes('exam') || name.includes('ms')) setPendingType('past_paper')
+                  else setPendingType('other')
+                }
                 e.target.value = ''
               }}
             />
           </div>
-          {resources.length === 0 && (
+
+          {/* Pending upload type selector */}
+          {pendingFile && (
+            <div className="mb-2 p-2 bg-emerald-50 border border-emerald-200 rounded-lg">
+              <p className="text-xs text-stone-700 truncate mb-1.5 font-medium">{pendingFile.name}</p>
+              <label className="text-xs text-stone-500 mb-1 block">Document type:</label>
+              <select
+                value={pendingType}
+                onChange={e => setPendingType(e.target.value as ResourceType)}
+                className="w-full text-xs border border-stone-300 rounded px-1.5 py-1 bg-white mb-2"
+              >
+                <option value="past_paper">Past Paper</option>
+                <option value="syllabus">Syllabus</option>
+                <option value="other">Other</option>
+              </select>
+              <div className="flex gap-1.5">
+                <button
+                  onClick={() => {
+                    onUploadResource(pendingFile, config.subject, pendingType)
+                    setPendingFile(null)
+                  }}
+                  className="flex-1 text-xs py-1 bg-emerald-600 text-white rounded hover:bg-emerald-700"
+                >
+                  Upload
+                </button>
+                <button
+                  onClick={() => setPendingFile(null)}
+                  className="text-xs px-2 py-1 bg-stone-200 text-stone-600 rounded hover:bg-stone-300"
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          )}
+
+          {resources.length === 0 && !pendingFile && (
             <div className="text-xs text-stone-400 italic">No resources uploaded</div>
           )}
           {resources.map(r => {
             const inKB = knowledgeBase.some(x => x.id === r.id)
+            const rType = r.resourceType ?? 'other'
             return (
-              <div key={r.id} className="flex items-center gap-1 py-1 text-xs">
-                <input
-                  type="checkbox"
-                  checked={inKB}
-                  onChange={() => inKB ? onRemoveFromKB(r.id) : onAddToKB(r)}
-                  className="accent-emerald-600"
-                />
-                <span className="flex-1 truncate text-stone-700">{r.name}</span>
-                <button onClick={() => onDeleteResource(r)} className="text-red-400 hover:text-red-600">
-                  <Trash2 className="w-3 h-3" />
-                </button>
+              <div key={r.id} className="py-1">
+                <div className="flex items-center gap-1 text-xs">
+                  <input
+                    type="checkbox"
+                    checked={inKB}
+                    onChange={() => inKB ? onRemoveFromKB(r.id) : onAddToKB(r)}
+                    className="accent-emerald-600 shrink-0"
+                  />
+                  <span className="flex-1 truncate text-stone-700">{r.name}</span>
+                  <button onClick={() => onDeleteResource(r)} className="text-red-400 hover:text-red-600 shrink-0">
+                    <Trash2 className="w-3 h-3" />
+                  </button>
+                </div>
+                <div className="ml-4 mt-0.5">
+                  <select
+                    value={rType}
+                    onChange={e => onUpdateResourceType(r, e.target.value as ResourceType)}
+                    className={`text-xs px-1.5 py-0.5 rounded font-medium border-0 outline-none cursor-pointer ${RESOURCE_TYPE_COLORS[rType]}`}
+                  >
+                    <option value="past_paper">Past Paper</option>
+                    <option value="syllabus">Syllabus</option>
+                    <option value="other">Other</option>
+                  </select>
+                </div>
               </div>
             )
           })}

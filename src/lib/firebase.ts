@@ -19,7 +19,7 @@ import {
 } from 'firebase/firestore';
 import { getStorage, ref as storageRef, uploadBytes, getDownloadURL, deleteObject } from 'firebase/storage';
 import firebaseConfig from '../../firebase-applet-config.json';
-import type { Assessment, Question, Folder, Resource } from './types'
+import type { Assessment, Question, Folder, Resource, ResourceType, SyllabusCache } from './types'
 
 const app = initializeApp(firebaseConfig);
 export const auth = getAuth(app);
@@ -198,7 +198,8 @@ export const updateFolder = async (id: string, name: string) => {
 
 export const saveResource = async (
   file: { name: string; data: ArrayBuffer; mimeType: string },
-  subject: string
+  subject: string,
+  resourceType?: ResourceType
 ): Promise<Resource> => {
   if (!auth.currentUser) throw new Error("User must be authenticated to save resource")
   const uid = auth.currentUser.uid
@@ -209,7 +210,7 @@ export const saveResource = async (
   const sRef = storageRef(storage, path)
   await uploadBytes(sRef, file.data, { contentType: file.mimeType })
   const downloadURL = await getDownloadURL(sRef)
-  const metadata = {
+  const metadata: any = {
     name: file.name,
     subject,
     storagePath: path,
@@ -218,8 +219,38 @@ export const saveResource = async (
     userId: uid,
     createdAt: serverTimestamp(),
   }
+  if (resourceType) metadata.resourceType = resourceType
   await setDoc(docRef, metadata)
   return { id: resourceId, ...metadata, createdAt: Timestamp.now() }
+}
+
+export const updateResourceType = async (id: string, resourceType: ResourceType): Promise<void> => {
+  await updateDoc(doc(db, 'resources', id), { resourceType })
+}
+
+export const updateResourceGeminiUri = async (id: string, uri: string): Promise<void> => {
+  await updateDoc(doc(db, 'resources', id), {
+    geminiFileUri: uri,
+    geminiFileUploadedAt: serverTimestamp(),
+  })
+}
+
+export const saveSyllabusCache = async (
+  resourceId: string,
+  subject: string,
+  topics: Record<string, string>
+): Promise<void> => {
+  await setDoc(doc(db, 'syllabusCache', resourceId), {
+    resourceId,
+    subject,
+    topics,
+    processedAt: serverTimestamp(),
+  })
+}
+
+export const getSyllabusCache = async (resourceId: string): Promise<SyllabusCache | null> => {
+  const snap = await getDoc(doc(db, 'syllabusCache', resourceId))
+  return snap.exists() ? (snap.data() as SyllabusCache) : null
 }
 
 export const getResources = async (subject?: string) => {

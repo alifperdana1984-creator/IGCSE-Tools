@@ -1,4 +1,5 @@
 import type { QuestionItem, Assessment, AnalyzeFileResult, GenerationConfig } from './types'
+import type { Reference } from './ai'
 import { withRetry } from './gemini'
 
 const ANTHROPIC_URL = 'https://api.anthropic.com/v1/messages'
@@ -95,8 +96,46 @@ function safeParseJson(text: string): any {
   }
 }
 
+function buildAnthropicReferenceParts(references: Reference[]): any[] {
+  const parts: any[] = []
+  const pastPapers = references.filter(r => r.resourceType === 'past_paper')
+  const syllabuses = references.filter(r => r.resourceType === 'syllabus')
+  const others = references.filter(r => !r.resourceType || r.resourceType === 'other')
+
+  if (pastPapers.length > 0) {
+    parts.push({ type: 'text', text: `REFERENCE PAST PAPERS (${pastPapers.length} document${pastPapers.length > 1 ? 's' : ''}): The following are authentic Cambridge IGCSE past papers. Study them carefully and replicate their exact question style, phrasing, difficulty calibration, command word usage, and mark allocation patterns. Your generated questions MUST feel indistinguishable from these official papers.` })
+    pastPapers.forEach(ref => {
+      const isImage = ref.mimeType.startsWith('image/')
+      const isPdf = ref.mimeType === 'application/pdf'
+      if (isImage) parts.push({ type: 'image', source: { type: 'base64', media_type: ref.mimeType, data: ref.data.split(',')[1] ?? ref.data } })
+      else if (isPdf) parts.push({ type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: ref.data.split(',')[1] ?? ref.data } })
+    })
+  }
+
+  if (syllabuses.length > 0) {
+    syllabuses.forEach(ref => {
+      if (ref.syllabusText) {
+        parts.push({ type: 'text', text: `OFFICIAL CAMBRIDGE IGCSE SYLLABUS OBJECTIVES:\nOnly generate questions that directly assess the following learning objectives.\n\n${ref.syllabusText}` })
+      } else {
+        parts.push({ type: 'text', text: `OFFICIAL CAMBRIDGE IGCSE SYLLABUS: Only generate questions covering the stated learning objectives in this syllabus document.` })
+        const isPdf = ref.mimeType === 'application/pdf'
+        if (isPdf) parts.push({ type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: ref.data.split(',')[1] ?? ref.data } })
+      }
+    })
+  }
+
+  others.forEach(ref => {
+    const isImage = ref.mimeType.startsWith('image/')
+    const isPdf = ref.mimeType === 'application/pdf'
+    if (isImage) parts.push({ type: 'image', source: { type: 'base64', media_type: ref.mimeType, data: ref.data.split(',')[1] ?? ref.data } })
+    else if (isPdf) parts.push({ type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: ref.data.split(',')[1] ?? ref.data } })
+  })
+
+  return parts
+}
+
 export async function generateTest(
-  config: GenerationConfig & { references?: { data: string; mimeType: string }[]; apiKey?: string },
+  config: GenerationConfig & { references?: Reference[]; apiKey?: string },
   onRetry?: (attempt: number) => void
 ): Promise<QuestionItem[]> {
   const key = config.apiKey ?? ''
@@ -117,19 +156,9 @@ Rules:
 Respond with ONLY this JSON structure (no other text):
 ${QUESTION_SCHEMA}`
 
-  const content: any[] = []
-
-  if (config.references) {
-    config.references.forEach(ref => {
-      const isImage = ref.mimeType.startsWith('image/')
-      const isPdf = ref.mimeType === 'application/pdf'
-      if (isImage) {
-        content.push({ type: 'image', source: { type: 'base64', media_type: ref.mimeType, data: ref.data.split(',')[1] ?? ref.data } })
-      } else if (isPdf) {
-        content.push({ type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: ref.data.split(',')[1] ?? ref.data } })
-      }
-    })
-  }
+  const content: any[] = config.references && config.references.length > 0
+    ? buildAnthropicReferenceParts(config.references)
+    : []
 
   content.push({ type: 'text', text: prompt })
 
@@ -216,7 +245,7 @@ export async function analyzeFile(
   subject: string,
   count: number,
   model: string,
-  references?: { data: string; mimeType: string }[],
+  references?: Reference[],
   apiKey?: string
 ): Promise<AnalyzeFileResult> {
   const prompt = `Analyze this Cambridge IGCSE ${subject} question.

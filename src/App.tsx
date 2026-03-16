@@ -190,8 +190,8 @@ export default function App() {
   const { notifications, notify, dismiss } = useNotifications()
   const { provider, setProvider, apiKeys, setApiKey, currentApiKey, customModel, setCustomModel, defaultModel } = useApiSettings()
   const library = useAssessments(user, notify)
-  const generation = useGeneration(notify, provider, currentApiKey || undefined)
   const resources = useResources(user, notify)
+  const generation = useGeneration(notify, provider, currentApiKey || undefined, resources.updateGeminiUri)
 
   useEffect(() => {
     return onAuthStateChanged(auth, u => {
@@ -347,10 +347,17 @@ export default function App() {
         retryCount={generation.retryCount}
         resources={resources.resources}
         knowledgeBase={resources.knowledgeBase}
-        onUploadResource={resources.uploadResource}
+        onUploadResource={(file, subject, resourceType) => {
+          resources.uploadResource(file, subject, resourceType).then(resource => {
+            if (resource && resourceType === 'syllabus' && currentApiKey) {
+              resources.processSyllabus(resource, currentApiKey)
+            }
+          })
+        }}
         onAddToKB={resources.addToKnowledgeBase}
         onRemoveFromKB={resources.removeFromKnowledgeBase}
         onDeleteResource={resources.deleteResource}
+        onUpdateResourceType={resources.updateResourceType}
         studentMode={studentMode}
         onStudentModeToggle={() => setStudentMode(s => !s)}
         syllabusContext={syllabusContext}

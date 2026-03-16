@@ -48,6 +48,8 @@ export interface Folder {
   createdAt: Timestamp
 }
 
+export type ResourceType = 'past_paper' | 'syllabus' | 'other'
+
 export interface Resource {
   id: string
   name: string
@@ -57,6 +59,16 @@ export interface Resource {
   mimeType: string
   userId: string
   createdAt: Timestamp
+  resourceType?: ResourceType
+  geminiFileUri?: string
+  geminiFileUploadedAt?: Timestamp
+}
+
+export interface SyllabusCache {
+  resourceId: string
+  subject: string
+  topics: Record<string, string>
+  processedAt: Timestamp
 }
 
 export interface GenerationConfig {

@@ -24,8 +24,18 @@ import {
   analyzeFile as anthropicAnalyzeFile,
 } from './anthropic-provider'
 
+export type Reference = {
+  data: string
+  mimeType: string
+  resourceType?: string
+  name?: string
+  geminiFileUri?: string
+  geminiFileUploadedAt?: number
+  syllabusText?: string
+}
+
 type WithExtra = GenerationConfig & {
-  references?: { data: string; mimeType: string }[]
+  references?: Reference[]
   apiKey?: string
 }
 
@@ -73,7 +83,7 @@ export async function analyzeFile(
   count: number,
   model: string,
   provider: GenerationConfig['provider'],
-  references?: { data: string; mimeType: string }[],
+  references?: Reference[],
   apiKey?: string
 ): Promise<AnalyzeFileResult> {
   switch (provider) {

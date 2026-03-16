@@ -64,14 +64,17 @@ service cloud.firestore {
     }
 
     function isValidResource(data) {
-      return hasOnlyAllowedFields(['name', 'subject', 'storagePath', 'downloadURL', 'mimeType', 'userId', 'createdAt']) &&
+      return hasOnlyAllowedFields(['name', 'subject', 'storagePath', 'downloadURL', 'mimeType', 'userId', 'createdAt', 'resourceType', 'geminiFileUri', 'geminiFileUploadedAt']) &&
              data.name is string && data.name.size() > 0 && data.name.size() < 200 &&
              data.subject is string && data.subject.size() > 0 &&
              data.storagePath is string && data.storagePath.size() > 0 &&
              data.downloadURL is string && data.downloadURL.size() > 0 &&
              data.mimeType is string &&
              data.userId == request.auth.uid &&
-             data.createdAt is timestamp;
+             data.createdAt is timestamp &&
+             (!('resourceType' in data) || data.resourceType == null || data.resourceType is string) &&
+             (!('geminiFileUri' in data) || data.geminiFileUri == null || data.geminiFileUri is string) &&
+             (!('geminiFileUploadedAt' in data) || data.geminiFileUploadedAt == null || data.geminiFileUploadedAt is timestamp);
     }
 
     function hasOnlyAllowedFields(fields) {
@@ -97,17 +100,39 @@ service cloud.firestore {
              (!('preparedBy' in data) || data.preparedBy == null || data.preparedBy is string);
     }
 
+    // Update validators skip hasOnlyAllowedFields — existing docs may have fields
+    // from older schema versions that are no longer in the create-time allowed list.
+    function isValidQuestionUpdate(data) {
+      return data.userId == request.auth.uid &&
+             data.createdAt == resource.data.createdAt &&
+             data.subject is string && data.subject.size() > 0 &&
+             data.topic is string && data.topic.size() > 0 &&
+             data.text is string && data.text.size() > 0 && data.text.size() < 10000 &&
+             (!('isPublic' in data) || data.isPublic == null || data.isPublic is bool) &&
+             (!('preparedBy' in data) || data.preparedBy == null || data.preparedBy is string);
+    }
+
+    function isValidAssessmentUpdate(data) {
+      return data.userId == request.auth.uid &&
+             data.createdAt == resource.data.createdAt &&
+             data.subject is string && data.subject.size() > 0 && data.subject.size() < 100 &&
+             data.topic is string && data.topic.size() > 0 && data.topic.size() < 200 &&
+             data.questions is list &&
+             (!('isPublic' in data) || data.isPublic == null || data.isPublic is bool) &&
+             (!('preparedBy' in data) || data.preparedBy == null || data.preparedBy is string);
+    }
+
     match /assessments/{assessmentId} {
       allow read: if isAuthenticated() && (resource.data.userId == request.auth.uid || resource.data.isPublic == true);
       allow create: if isAuthenticated() && isValidAssessment(request.resource.data);
-      allow update: if isAuthenticated() && resource.data.userId == request.auth.uid && isValidAssessment(request.resource.data);
+      allow update: if isAuthenticated() && resource.data.userId == request.auth.uid && isValidAssessmentUpdate(request.resource.data);
       allow delete: if isAuthenticated() && resource.data.userId == request.auth.uid;
     }
 
     match /questions/{questionId} {
       allow read: if isAuthenticated() && (resource.data.userId == request.auth.uid || resource.data.isPublic == true);
       allow create: if isAuthenticated() && isValidQuestion(request.resource.data);
-      allow update: if isAuthenticated() && resource.data.userId == request.auth.uid && isValidQuestion(request.resource.data);
+      allow update: if isAuthenticated() && resource.data.userId == request.auth.uid && isValidQuestionUpdate(request.resource.data);
       allow delete: if isAuthenticated() && resource.data.userId == request.auth.uid;
     }
 
@@ -121,8 +146,13 @@ service cloud.firestore {
     match /resources/{resourceId} {
       allow read: if isAuthenticated() && resource.data.userId == request.auth.uid;
       allow create: if isAuthenticated() && isValidResource(request.resource.data);
-      allow update: if isAuthenticated() && resource.data.userId == request.auth.uid && isValidResource(request.resource.data);
+      allow update: if isAuthenticated() && resource.data.userId == request.auth.uid;
       allow delete: if isAuthenticated() && resource.data.userId == request.auth.uid;
+    }
+
+    match /syllabusCache/{resourceId} {
+      allow read: if isAuthenticated();
+      allow write: if isAuthenticated();
     }
 
     match /users/{userId} {

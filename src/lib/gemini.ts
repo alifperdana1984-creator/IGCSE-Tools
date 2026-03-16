@@ -1,5 +1,6 @@
 import { GoogleGenAI, Type } from "@google/genai";
 import type { QuestionItem, Assessment, AnalyzeFileResult, GenerationConfig, GeminiError } from './types'
+import type { Reference } from './ai'
 
 function getAI(apiKey?: string) {
   return new GoogleGenAI({ apiKey: apiKey || process.env.GEMINI_API_KEY || "" });
@@ -130,8 +131,71 @@ export async function withRetry<T>(
 }
 // -------------------------
 
+// 48h minus 2h buffer
+const GEMINI_URI_VALID_MS = 46 * 60 * 60 * 1000
+
+export async function uploadToGeminiFileApi(
+  base64: string,
+  mimeType: string,
+  displayName: string,
+  apiKey: string
+): Promise<string> {
+  const ai = getAI(apiKey)
+  const binaryStr = atob(base64)
+  const bytes = new Uint8Array(binaryStr.length)
+  for (let i = 0; i < binaryStr.length; i++) bytes[i] = binaryStr.charCodeAt(i)
+  const blob = new Blob([bytes], { type: mimeType })
+  const uploaded = await ai.files.upload({ file: blob, config: { displayName, mimeType } })
+  return (uploaded as any).uri as string
+}
+
+function buildReferenceParts(references: Reference[]): any[] {
+  const parts: any[] = []
+  const pastPapers = references.filter(r => r.resourceType === 'past_paper')
+  const syllabuses = references.filter(r => r.resourceType === 'syllabus')
+  const others = references.filter(r => !r.resourceType || r.resourceType === 'other')
+
+  if (pastPapers.length > 0) {
+    parts.push({ text: `REFERENCE PAST PAPERS (${pastPapers.length} document${pastPapers.length > 1 ? 's' : ''}): The following are authentic Cambridge IGCSE past papers. Study them carefully and replicate their exact question style, phrasing, difficulty calibration, command word usage, diagram style, and mark allocation patterns. Your generated questions MUST feel indistinguishable from these official papers.` })
+    pastPapers.forEach(ref => {
+      if (ref.geminiFileUri && ref.geminiFileUploadedAt && Date.now() - ref.geminiFileUploadedAt < GEMINI_URI_VALID_MS) {
+        parts.push({ fileData: { fileUri: ref.geminiFileUri, mimeType: ref.mimeType } })
+      } else {
+        parts.push({ inlineData: { mimeType: ref.mimeType, data: ref.data.split(',')[1] || ref.data } })
+      }
+    })
+  }
+
+  if (syllabuses.length > 0) {
+    syllabuses.forEach(ref => {
+      if (ref.syllabusText) {
+        parts.push({ text: `OFFICIAL CAMBRIDGE IGCSE SYLLABUS OBJECTIVES:\nOnly generate questions that directly assess the following learning objectives. Every question must be explicitly aligned to a stated objective.\n\n${ref.syllabusText}` })
+      } else {
+        parts.push({ text: `OFFICIAL CAMBRIDGE IGCSE SYLLABUS: The following document is the official syllabus. Only generate questions that cover the stated learning objectives. Every question must be aligned to a specific objective listed in this syllabus.` })
+        if (ref.geminiFileUri && ref.geminiFileUploadedAt && Date.now() - ref.geminiFileUploadedAt < GEMINI_URI_VALID_MS) {
+          parts.push({ fileData: { fileUri: ref.geminiFileUri, mimeType: ref.mimeType } })
+        } else {
+          parts.push({ inlineData: { mimeType: ref.mimeType, data: ref.data.split(',')[1] || ref.data } })
+        }
+      }
+    })
+  }
+
+  if (others.length > 0) {
+    others.forEach(ref => {
+      if (ref.geminiFileUri && ref.geminiFileUploadedAt && Date.now() - ref.geminiFileUploadedAt < GEMINI_URI_VALID_MS) {
+        parts.push({ fileData: { fileUri: ref.geminiFileUri, mimeType: ref.mimeType } })
+      } else {
+        parts.push({ inlineData: { mimeType: ref.mimeType, data: ref.data.split(',')[1] || ref.data } })
+      }
+    })
+  }
+
+  return parts
+}
+
 export async function generateTest(
-  config: GenerationConfig & { references?: { data: string; mimeType: string }[]; apiKey?: string },
+  config: GenerationConfig & { references?: Reference[]; apiKey?: string },
   onRetry?: (attempt: number) => void
 ): Promise<QuestionItem[]> {
   const ai = getAI(config.apiKey)
@@ -151,18 +215,9 @@ Rules:
 5. FOR MCQ QUESTIONS: Set type to "mcq". Provide exactly 4 answer choices in the "options" array (plain text, no letter prefix). The "answer" field must be ONLY the letter "A", "B", "C", or "D". If 4 distinct text-based options cannot be written, use short_answer instead.
 6. Add **Syllabus Reference:** at end of each question text.`
 
-  const parts: any[] = []
-
-  if (config.references && config.references.length > 0) {
-    config.references.forEach(ref => {
-      parts.push({
-        inlineData: {
-          mimeType: ref.mimeType,
-          data: ref.data.split(",")[1] || ref.data,
-        },
-      })
-    })
-  }
+  const parts: any[] = config.references && config.references.length > 0
+    ? buildReferenceParts(config.references)
+    : []
 
   parts.push({ text: prompt })
 
@@ -386,7 +441,7 @@ export async function analyzeFile(
   subject: string,
   count: number = 3,
   model: string = 'gemini-3-flash-preview',
-  references?: { data: string; mimeType: string }[],
+  references?: Reference[],
   apiKey?: string
 ): Promise<AnalyzeFileResult> {
   const ai = getAI(apiKey)
@@ -398,18 +453,9 @@ export async function analyzeFile(
 4. Each question must have: text, answer, markScheme, marks, commandWord, type (mcq/short_answer/structured), hasDiagram.
 5. **FORMATTING**: Bold question text, double newlines for MCQ options, bold Syllabus Reference at end.`
 
-  const parts: any[] = []
-
-  if (references && references.length > 0) {
-    references.forEach(ref => {
-      parts.push({
-        inlineData: {
-          mimeType: ref.mimeType,
-          data: ref.data.split(",")[1] || ref.data,
-        },
-      })
-    })
-  }
+  const parts: any[] = references && references.length > 0
+    ? buildReferenceParts(references)
+    : []
 
   parts.push({
     inlineData: {
