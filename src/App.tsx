@@ -348,19 +348,24 @@ export default function App() {
         resources={resources.resources}
         knowledgeBase={resources.knowledgeBase}
         onUploadResource={(file, subject, resourceType) => {
+          const geminiKey = apiKeys['gemini']
           resources.uploadResource(file, subject, resourceType).then(resource => {
-            if (resource && resourceType === 'syllabus' && currentApiKey) {
-              resources.processSyllabus(resource, currentApiKey)
+            if (resource && resourceType === 'syllabus' && geminiKey) {
+              resources.processSyllabus(resource, geminiKey)
             }
-            if (resource && resourceType === 'past_paper' && currentApiKey) {
-              resources.processPastPaper(resource, currentApiKey)
+            if (resource && resourceType === 'past_paper' && geminiKey) {
+              resources.processPastPaper(resource, geminiKey)
             }
           })
         }}
         onAddToKB={(resource) => {
           resources.addToKnowledgeBase(resource)
-          if (resource.resourceType === 'past_paper' && currentApiKey) {
-            resources.processPastPaper(resource, currentApiKey)
+          const geminiKey = apiKeys['gemini']
+          if (resource.resourceType === 'past_paper' && geminiKey) {
+            resources.processPastPaper(resource, geminiKey)
+          }
+          if (resource.resourceType === 'syllabus' && geminiKey) {
+            resources.processSyllabus(resource, geminiKey)
           }
         }}
         onRemoveFromKB={resources.removeFromKnowledgeBase}
