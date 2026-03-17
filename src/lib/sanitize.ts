@@ -63,6 +63,15 @@ export function normalizeDiagram(raw: unknown): DiagramSpec | undefined {
         }
       }
     }
+    // Normalize parallel/perpendicular: convert [{seg1,seg2}] objects → [string,string] tuples
+    for (const key of ['parallel', 'perpendicular'] as const) {
+      if (Array.isArray(d[key])) {
+        d[key] = (d[key] as Record<string, unknown>[]).map(item => {
+          if (Array.isArray(item)) return item  // already tuple
+          return [String(item.seg1 ?? item[0] ?? ''), String(item.seg2 ?? item[1] ?? '')]
+        }).filter((pair: unknown[]) => pair[0] && pair[1])
+      }
+    }
     return raw as DiagramSpec
   }
   if (dt === 'geometric_shape') {

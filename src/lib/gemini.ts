@@ -400,10 +400,6 @@ const DIAGRAM_SCHEMA = {
     nlPoints: { type: Type.ARRAY, nullable: true, items: { type: Type.OBJECT } },
     ranges:   { type: Type.ARRAY, nullable: true, items: { type: Type.OBJECT } },
     bars:     { type: Type.ARRAY, nullable: true, items: { type: Type.OBJECT } },
-    angles:   { type: Type.ARRAY, nullable: true, items: { type: Type.OBJECT } },
-    parallel: { type: Type.ARRAY, nullable: true, items: { type: Type.ARRAY, items: { type: Type.STRING } } },
-    perpendicular: { type: Type.ARRAY, nullable: true, items: { type: Type.ARRAY, items: { type: Type.STRING } } },
-    labels:   { type: Type.ARRAY, nullable: true, items: { type: Type.OBJECT } },
   },
 }
 
@@ -428,11 +424,11 @@ Pick the correct diagramType and fill in all required fields. ALL coordinate val
     points: {"A":[x,y],"B":[x,y],...} — 2-10 named points, coordinates in range 0-10
     segments: [{from:"A",to:"B",label:"8 cm",dashed:false}]
     angles: [{at:"B",between:["A","C"],label:"60°"}]
-    parallel: [["AB","CD"]] — segment name pairs that are parallel (draws tick marks)
-    perpendicular: [["AB","BC"]] — segment name pairs at 90° (draws square marker)
-    labels: [{text:"label",at:"A",offset:[5,0]}]
+    parallel: [{"seg1":"AB","seg2":"CD"}] — segment pairs that are parallel (draws tick marks)
+    perpendicular: [{"seg1":"AB","seg2":"BC"}] — segment pairs at 90° (draws square marker)
+    labels: [{"text":"label","at":"A","dx":5,"dy":0}]
     Example right triangle with AB=8cm BC=6cm right angle B:
-    {"diagramType":"geometry","points":[{"name":"A","x":1,"y":1},{"name":"B","x":1,"y":7},{"name":"C","x":9,"y":1}],"segments":[{"from":"A","to":"B","label":"8 cm"},{"from":"B","to":"C","label":"6 cm"},{"from":"A","to":"C"}],"perpendicular":[["AB","BC"]]}
+    {"diagramType":"geometry","points":[{"name":"A","x":1,"y":1},{"name":"B","x":1,"y":7},{"name":"C","x":9,"y":1}],"segments":[{"from":"A","to":"B","label":"8 cm"},{"from":"B","to":"C","label":"6 cm"},{"from":"A","to":"C"}],"perpendicular":[{"seg1":"AB","seg2":"BC"}]}
 • "cartesian_grid" — for coordinate geometry, graphs, plotting points. xMin,xMax,yMin,yMax (integers),gridStep(1 or 2); points:[{label,x,y}]; segments:[{x1,y1,x2,y2}]
 • "geometric_shape" — AVOID; use "geometry" instead for most shapes. For complex multi-shape diagrams only. Canvas 400×300 px.
 • "number_line" — min,max,step; nlPoints:[{value,open,label}]; ranges:[{from,to}]
@@ -467,8 +463,8 @@ All label strings: plain text only, no LaTeX or dollar signs.`
             ranges:   { type: Type.ARRAY, nullable: true, items: { type: Type.OBJECT } },
             bars:     { type: Type.ARRAY, nullable: true, items: { type: Type.OBJECT } },
             angles:   { type: Type.ARRAY, nullable: true, items: { type: Type.OBJECT } },
-            parallel: { type: Type.ARRAY, nullable: true, items: { type: Type.ARRAY, items: { type: Type.STRING } } },
-            perpendicular: { type: Type.ARRAY, nullable: true, items: { type: Type.ARRAY, items: { type: Type.STRING } } },
+            parallel: { type: Type.ARRAY, nullable: true, items: { type: Type.OBJECT } },
+            perpendicular: { type: Type.ARRAY, nullable: true, items: { type: Type.OBJECT } },
             labels:   { type: Type.ARRAY, nullable: true, items: { type: Type.OBJECT } },
           },
           required: ['diagramType'],
