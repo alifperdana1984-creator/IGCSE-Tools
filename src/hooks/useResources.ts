@@ -142,7 +142,21 @@ export function useResources(user: User | null, notify: NotifyFn) {
           contents: {
             parts: [
               { inlineData: { mimeType: resource.mimeType, data: base64 } },
-              { text: `Parse this Cambridge IGCSE syllabus for ${resource.subject}. Extract all learning objectives organized by topic. Return ONLY a JSON object where each key is a topic name and each value is a string with all learning objectives for that topic. Example: { "Cell Structure": "1.1 describe the structure...", "Enzymes": "2.1 describe enzyme action..." }` },
+              { text: `You are parsing an official Cambridge IGCSE syllabus document for ${resource.subject}.
+
+Extract ALL learning objectives, preserving:
+1. The exact CAIE reference codes (e.g. "B2.3", "C4.1", "P1.2") — do NOT omit or paraphrase these.
+2. The exact objective wording as written in the syllabus.
+3. Core vs Extended distinctions — prefix Extended-only objectives with "[Extended] ".
+4. Group objectives by their topic/section heading exactly as in the document.
+
+Return a JSON object where each key is the topic name and each value is a string containing all objectives for that topic, one per line, with their reference codes. Example:
+{
+  "Cell Structure": "1.1 – Describe the structure of a typical animal cell...\\n1.2 – Describe the structure of a typical plant cell...\\n[Extended] 1.3 – Compare the structure of...",
+  "Enzymes": "2.1 – Define enzyme as a biological catalyst...\\n2.2 – Describe the effect of temperature on enzyme activity..."
+}
+
+Be thorough — include every numbered objective. Do not skip any.` },
             ]
           },
           config: {
@@ -201,16 +215,27 @@ export function useResources(user: User | null, notify: NotifyFn) {
           contents: {
             parts: [
               { inlineData: { mimeType: resource.mimeType, data: base64 } },
-              { text: `This is a Cambridge IGCSE ${resource.subject} past paper. Extract 30-40 representative question-and-answer examples spanning easy, medium, and challenging difficulty.
-Return structured JSON only with:
-- summary: short style summary
-- items: array where each item has questionText, commandWord, marks, markScheme, questionType, difficultyBand, topic.
-Focus on authentic command words, mark allocation patterns, and wording style. Keep each item concise.` },
+              { text: `You are extracting questions from an official Cambridge IGCSE ${resource.subject} past paper for use as style references.
+
+EXTRACTION RULES:
+1. Extract ALL questions and sub-questions from the paper. For multi-part questions (a)(b)(c), extract EACH sub-part as a separate item — label them clearly (e.g. questionText: "(b)(ii) Explain why...").
+2. Preserve the EXACT original wording of every question — do not paraphrase or shorten.
+3. Preserve the FULL mark scheme for each question/sub-part — include every marking point, "accept" alternatives, "reject" notes, and method marks (M marks). Do NOT truncate.
+4. For each item, identify:
+   - commandWord: the Cambridge command word used (Describe, Explain, Calculate, State, etc.)
+   - marks: the mark allocation for this specific sub-part
+   - questionType: "mcq", "short_answer", or "structured"
+   - difficultyBand: "easy" (1–2 marks, recall), "medium" (2–4 marks, application), or "challenging" (4+ marks, analysis/evaluation)
+   - topic: the syllabus topic this question covers
+   - assessmentObjective: "AO1" (knowledge/recall), "AO2" (application/problem-solving), or "AO3" (experimental/practical)
+5. summary: include the paper type (e.g. "Paper 1 MCQ", "Paper 2 Structured"), approximate number of questions, mark range distribution, and dominant question types.
+
+Extract as many items as possible — aim for complete coverage of the paper, not a sample.` },
             ]
           },
           config: {
             responseMimeType: 'application/json',
-            maxOutputTokens: 8192,
+            maxOutputTokens: 65536,
             responseSchema: {
               type: Type.OBJECT,
               properties: {
@@ -227,6 +252,7 @@ Focus on authentic command words, mark allocation patterns, and wording style. K
                       questionType: { type: Type.STRING, nullable: true },
                       difficultyBand: { type: Type.STRING, nullable: true },
                       topic: { type: Type.STRING, nullable: true },
+                      assessmentObjective: { type: Type.STRING, nullable: true },
                     },
                     required: ['questionText', 'markScheme'],
                   },
@@ -249,10 +275,11 @@ Focus on authentic command words, mark allocation patterns, and wording style. K
           questionType?: string
           difficultyBand?: 'easy' | 'medium' | 'challenging'
           topic?: string
+          assessmentObjective?: string
         }>
       }
       const items = (parsed.items ?? [])
-        .filter(x => (x.questionText ?? '').trim().length > 20 && (x.markScheme ?? '').trim().length > 10)
+        .filter(x => (x.questionText ?? '').trim().length > 10 && (x.markScheme ?? '').trim().length > 5)
         .map(x => ({
           questionText: (x.questionText ?? '').trim(),
           commandWord: (x.commandWord ?? '').trim() || 'Unknown',
@@ -261,14 +288,15 @@ Focus on authentic command words, mark allocation patterns, and wording style. K
           ...(x.questionType ? { questionType: String(x.questionType).trim() } : {}),
           ...(x.difficultyBand ? { difficultyBand: x.difficultyBand } : {}),
           ...(x.topic ? { topic: String(x.topic).trim() } : {}),
+          ...(x.assessmentObjective ? { assessmentObjective: String(x.assessmentObjective).trim() } : {}),
         }))
-      if (items.length >= 10) {
+      if (items.length >= 5) {
         await savePastPaperCache(resource.id, resource.subject, {
           items,
           summary: parsed.summary?.trim() || undefined,
           version: 2,
         })
-        notify(`Past paper "${resource.name}" processed � ${items.length} structured examples cached`, 'success')
+        notify(`Past paper "${resource.name}" processed � ${items.length} structured examples cached`, 'success')
       }
     } catch (e) {
       const msg = e instanceof Error ? e.message : 'Unknown error'

@@ -22,24 +22,24 @@ function formatPastPaperText(cache: {
     questionType?: string
     difficultyBand?: string
     topic?: string
+    assessmentObjective?: string
   }>
 }): string {
   if (cache.items && cache.items.length > 0) {
     const lines = cache.items
-      .slice(0, 40)
       .map((item, i) =>
-        `Example ${i + 1}\n` +
+        `--- Example ${i + 1} ---\n` +
         `Question: ${item.questionText}\n` +
-        `Command Word: ${item.commandWord}\n` +
-        `Marks: ${item.marks}\n` +
-        `${item.questionType ? `Type: ${item.questionType}\n` : ''}` +
-        `${item.difficultyBand ? `Difficulty: ${item.difficultyBand}\n` : ''}` +
-        `${item.topic ? `Topic: ${item.topic}\n` : ''}` +
-        `Mark Scheme: ${item.markScheme}`
+        `Command Word: ${item.commandWord} | Marks: ${item.marks}` +
+        `${item.questionType ? ` | Type: ${item.questionType}` : ''}` +
+        `${item.difficultyBand ? ` | Difficulty: ${item.difficultyBand}` : ''}` +
+        `${item.assessmentObjective ? ` | ${item.assessmentObjective}` : ''}` +
+        `\n${item.topic ? `Topic: ${item.topic}\n` : ''}` +
+        `Mark Scheme:\n${item.markScheme}`
       )
       .join('\n\n')
     return cache.summary?.trim()
-      ? `STYLE SUMMARY:\n${cache.summary.trim()}\n\n${lines}`
+      ? `PAPER SUMMARY:\n${cache.summary.trim()}\n\n${lines}`
       : lines
   }
   return (cache.examples ?? '').trim()
