@@ -45,12 +45,13 @@ export type UsageCallback = (model: string, inputTokens: number, outputTokens: n
 export async function generateTest(
   config: WithExtra,
   onRetry?: (attempt: number) => void,
-  onUsage?: UsageCallback
+  onUsage?: UsageCallback,
+  onLog?: (msg: string) => void,
 ): Promise<QuestionItem[]> {
   switch (config.provider) {
     case 'openai': return openaiGenerateTest(config, onRetry, onUsage)
     case 'anthropic': return anthropicGenerateTest(config, onRetry, onUsage)
-    default: return geminiGenerateTest(config, onRetry, onUsage)
+    default: return geminiGenerateTest(config, onRetry, onUsage, onLog)
   }
 }
 

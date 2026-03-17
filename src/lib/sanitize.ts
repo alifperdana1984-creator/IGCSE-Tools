@@ -3,7 +3,7 @@ import { normalizeSvgMarkdown } from './svg'
 
 const KNOWN_DIAGRAM_TYPES = new Set(['cartesian_grid', 'geometric_shape', 'number_line', 'bar_chart'])
 
-function normalizeDiagram(raw: unknown): DiagramSpec | undefined {
+export function normalizeDiagram(raw: unknown): DiagramSpec | undefined {
   if (!raw || typeof raw !== 'object') return undefined
   const d = raw as Record<string, unknown>
   const dt = d.diagramType as string

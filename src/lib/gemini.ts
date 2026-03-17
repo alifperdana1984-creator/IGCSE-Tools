@@ -1,8 +1,8 @@
 import { GoogleGenAI, Type } from "@google/genai";
-import type { QuestionItem, Assessment, AnalyzeFileResult, GenerationConfig, GeminiError } from './types'
+import type { QuestionItem, DiagramSpec, Assessment, AnalyzeFileResult, GenerationConfig, GeminiError } from './types'
 import type { Reference } from './ai'
 import type { UsageCallback } from './ai'
-import { sanitizeQuestion, generateQuestionCode as sharedGenerateQuestionCode } from './sanitize'
+import { sanitizeQuestion, normalizeDiagram, generateQuestionCode as sharedGenerateQuestionCode } from './sanitize'
 import { parseJsonWithRecovery } from './json'
 
 function getAI(apiKey?: string) {
@@ -401,10 +401,75 @@ const DIAGRAM_SCHEMA = {
   },
 }
 
+/** Focused single-call diagram generation for one question.
+ *  Uses a minimal schema so Gemini structured output doesn't fail. */
+async function generateDiagramForQuestion(
+  question: QuestionItem,
+  subject: string,
+  model: string,
+  ai: ReturnType<typeof getAI>,
+  onUsage?: UsageCallback,
+): Promise<DiagramSpec | undefined> {
+  const optText = question.options?.length ? `\nMCQ options: ${question.options.join(' | ')}` : ''
+  const ansText = question.answer ? `\nCorrect answer: ${question.answer}` : ''
+  const prompt = `Generate a diagram JSON for this Cambridge IGCSE ${subject} question.
+
+QUESTION: ${question.text}${optText}${ansText}
+
+Pick the correct diagramType and fill in all required fields:
+• "cartesian_grid" — xMin,xMax,yMin,yMax,gridStep; points:[{label,x,y}]; segments:[{x1,y1,x2,y2}]
+• "geometric_shape" — shapes:[{kind,vertices/cx/cy/radius/x/y/width/height,sides,labels}] canvas 400×300 px, ~40 px margins
+• "number_line" — min,max,step; nlPoints:[{value,open,label}]; ranges:[{from,to}]
+• "bar_chart" — bars:[{label,value}]; title,xLabel,yLabel optional
+All label strings: plain text only, no LaTeX or dollar signs.`
+
+  try {
+    const response = await ai.models.generateContent({
+      model,
+      contents: [{ role: 'user', parts: [{ text: prompt }] }],
+      config: {
+        responseMimeType: 'application/json',
+        maxOutputTokens: 768,
+        temperature: 0.2,
+        responseSchema: {
+          type: Type.OBJECT,
+          properties: {
+            diagramType: { type: Type.STRING },
+            xMin: { type: Type.NUMBER, nullable: true }, xMax: { type: Type.NUMBER, nullable: true },
+            yMin: { type: Type.NUMBER, nullable: true }, yMax: { type: Type.NUMBER, nullable: true },
+            gridStep: { type: Type.NUMBER, nullable: true },
+            viewWidth: { type: Type.NUMBER, nullable: true }, viewHeight: { type: Type.NUMBER, nullable: true },
+            min: { type: Type.NUMBER, nullable: true }, max: { type: Type.NUMBER, nullable: true },
+            step: { type: Type.NUMBER, nullable: true },
+            title: { type: Type.STRING, nullable: true },
+            xLabel: { type: Type.STRING, nullable: true }, yLabel: { type: Type.STRING, nullable: true },
+            points:   { type: Type.ARRAY, nullable: true, items: { type: Type.OBJECT } },
+            segments: { type: Type.ARRAY, nullable: true, items: { type: Type.OBJECT } },
+            polygons: { type: Type.ARRAY, nullable: true, items: { type: Type.OBJECT } },
+            shapes:   { type: Type.ARRAY, nullable: true, items: { type: Type.OBJECT } },
+            nlPoints: { type: Type.ARRAY, nullable: true, items: { type: Type.OBJECT } },
+            ranges:   { type: Type.ARRAY, nullable: true, items: { type: Type.OBJECT } },
+            bars:     { type: Type.ARRAY, nullable: true, items: { type: Type.OBJECT } },
+          },
+          required: ['diagramType'],
+        },
+      },
+    })
+    const usage = getGeminiUsage(response)
+    if (usage) onUsage?.(model, usage.inputTokens, usage.outputTokens)
+    const raw = response.text
+    if (!raw) return undefined
+    return normalizeDiagram(JSON.parse(raw))
+  } catch {
+    return undefined
+  }
+}
+
 export async function generateTest(
   config: GenerationConfig & { references?: Reference[]; apiKey?: string },
   onRetry?: (attempt: number) => void,
-  onUsage?: UsageCallback
+  onUsage?: UsageCallback,
+  onLog?: (msg: string) => void,
 ): Promise<QuestionItem[]> {
   const ai = getAI(config.apiKey)
   const subjectRules = SUBJECT_SPECIFIC_RULES[config.subject] ?? ''
@@ -568,6 +633,20 @@ DIAGRAMS (MANDATORY RULES):
 
   if (config.difficulty === 'Challenging' && questions.length > 0) {
     questions = await critiqueForDifficulty(questions, config.subject, config.model || 'gemini-3-flash-preview', ai, onRetry, onUsage)
+  }
+
+  // Phase 2: generate diagrams for questions that need one but didn't get one
+  const needsDiagram = questions.filter(q => q.hasDiagram && !q.diagram && !q.diagramMissing)
+  if (needsDiagram.length > 0) {
+    onLog?.(`Generating diagrams for ${needsDiagram.length} question${needsDiagram.length !== 1 ? 's' : ''}…`)
+    const diagrams = await Promise.all(
+      needsDiagram.map(q => generateDiagramForQuestion(q, config.subject, config.model || 'gemini-2.0-flash', ai, onUsage))
+    )
+    questions = questions.map(q => {
+      const idx = needsDiagram.findIndex(nd => nd.id === q.id)
+      if (idx === -1 || !diagrams[idx]) return q
+      return { ...q, diagram: diagrams[idx], diagramMissing: undefined } as QuestionItem
+    })
   }
 
   return questions

@@ -198,7 +198,7 @@ export function useGeneration(
         setRetryCount(attempt)
         addLog(`Rate limit hit — retrying (${attempt}/3)…`)
         notify(`Rate limit hit, retrying (${attempt}/3)...`, 'info')
-      }, addUsageCost)
+      }, addUsageCost, addLog)
       addLog(`Processing ${questions.length} question${questions.length !== 1 ? 's' : ''}…`)
       addLog('Finalising assessment…')
       const draft: Assessment = {
