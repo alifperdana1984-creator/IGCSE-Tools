@@ -56,6 +56,43 @@ function parseCoord(s: string): { x: number; y: number } | null {
   return m ? { x: Number(m[1]), y: Number(m[2]) } : null
 }
 
+/** Scan question text for labeled coordinate points like A(-1, 4) or B(3, -2)
+ *  and auto-generate a cartesian_grid with those points (and a connecting segment). */
+function tryAutoCartesianFromText(text: string): DiagramSpec | undefined {
+  // Strip LaTeX delimiters and normalise unicode minus before matching
+  const clean = text.replace(/\$+/g, '').replace(/−/g, '-').replace(/\\left\s*\(/g, '(').replace(/\\right\s*\)/g, ')')
+  const pointRe = /\b([A-Z])\s*\(\s*(-?\d+(?:\.\d+)?)\s*,\s*(-?\d+(?:\.\d+)?)\s*\)/g
+  const matches = [...clean.matchAll(pointRe)]
+  if (matches.length === 0) return undefined
+
+  const seen = new Set<string>()
+  const points: Array<{ label: string; x: number; y: number }> = []
+  for (const m of matches) {
+    if (!seen.has(m[1])) {
+      seen.add(m[1])
+      points.push({ label: m[1], x: Number(m[2]), y: Number(m[3]) })
+    }
+  }
+
+  const allX = points.map(p => p.x)
+  const allY = points.map(p => p.y)
+  const boundX = Math.ceil(Math.max(...allX.map(Math.abs), 3)) + 1
+  const boundY = Math.ceil(Math.max(...allY.map(Math.abs), 3)) + 1
+  const segments = points.length >= 2
+    ? [{ x1: points[0].x, y1: points[0].y, x2: points[1].x, y2: points[1].y }]
+    : []
+
+  return {
+    diagramType: 'cartesian_grid',
+    xMin: -boundX, xMax: boundX,
+    yMin: -boundY, yMax: boundY,
+    gridStep: 1,
+    points: points.map(p => ({ label: p.label, x: p.x, y: p.y, color: '#7c3aed' })),
+    segments,
+    polygons: [],
+  } as DiagramSpec
+}
+
 /** If all MCQ options are coordinate pairs and the answer is also a coordinate pair,
  *  auto-generate a cartesian_grid diagram so the question is actually answerable. */
 function tryAutoCartesianDiagram(answer: string, options: string[]): DiagramSpec | undefined {
@@ -146,12 +183,19 @@ export function sanitizeQuestion(q: any): Omit<QuestionItem, 'id'> {
   const normalizedText = normalizeSvgMarkdown(text)
   const rawDiagram = normalizeDiagram(q.diagram)
 
-  // Auto-generate a cartesian_grid for coordinate MCQ questions when the model didn't provide one
-  const diagram = rawDiagram ?? (
-    type === 'mcq' && options.length >= 2
-      ? tryAutoCartesianDiagram(fix(q.answer ?? ''), options)
-      : undefined
-  )
+  // Auto-generate a cartesian_grid when the model didn't provide one
+  const diagram = rawDiagram ?? (() => {
+    // 1. All MCQ options are coordinate pairs → plot the correct answer point
+    if (type === 'mcq' && options.length >= 2) {
+      const fromOpts = tryAutoCartesianDiagram(fix(q.answer ?? ''), options)
+      if (fromOpts) return fromOpts
+    }
+    // 2. Question text contains labeled coordinate points like A(-1, 4) → plot them
+    if (q.hasDiagram) {
+      return tryAutoCartesianFromText(normalizedText) ?? undefined
+    }
+    return undefined
+  })()
 
   // Detect questions that say "in the diagram" but have no SVG or structured diagram field.
   const referencesDiagram = /\b(in the diagram|the diagram shows|refer to the diagram|as shown in the diagram|from the diagram|on the diagram|shown on the (grid|diagram|figure|graph)|the (grid|figure|graph) shows|shown in the (figure|graph|grid)|as shown (below|above)|on the (grid|graph) (below|above|shown)|shown on a (grid|graph)|coordinates? (?:of|shown)|point [A-Z] shown)\b/i.test(normalizedText)
