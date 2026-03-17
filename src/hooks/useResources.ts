@@ -36,7 +36,7 @@ function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise
   ])
 }
 
-const PROCESSING_TIMEOUT_MS = 90_000 // 90 seconds per AI processing call
+const PROCESSING_TIMEOUT_MS = 300_000 // 5 minutes — gemini-2.5-pro needs more time for large PDFs
 
 export function useResources(user: User | null, notify: NotifyFn) {
   const [resources, setResources] = useState<Resource[]>([])
