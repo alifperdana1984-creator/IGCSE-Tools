@@ -125,7 +125,7 @@ export function useResources(user: User | null, notify: NotifyFn) {
     try {
       const existing = await getSyllabusCache(resource.id)
       if (existing) return
-    } catch { return }
+    } catch { /* cache read failed — proceed with processing */ }
     setProcessingIds(s => new Set(s).add(resource.id))
 
     try {
@@ -198,7 +198,7 @@ Be thorough — include every numbered objective. Do not skip any.` },
     try {
       const existing = await getPastPaperCache(resource.id)
       if (existing && ((existing.items && existing.items.length >= 10) || (existing.examples && existing.examples.length > 100))) return
-    } catch { return }
+    } catch { /* cache read failed — proceed with processing */ }
     setProcessingIds(s => new Set(s).add(resource.id))
 
     try {
