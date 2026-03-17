@@ -70,7 +70,8 @@ export const DIFFICULTY_GUIDANCE: Record<string, string> = {
 - Marks per question: 1–2
 - Command words: State, Name, Define, List, Identify, Label
 - Style: Single concept, direct recall, familiar textbook contexts, one-step calculations
-- MCQ distractors: clearly wrong to a student who knows the topic`,
+- MCQ distractors: clearly wrong to a student who knows the topic
+- AO distribution: ~70% AO1 (recall/knowledge), ~30% AO2 (simple application), no AO3`,
 
   Medium: `DIFFICULTY: Medium
 - Target: 40–60% of students should answer correctly
@@ -78,13 +79,15 @@ export const DIFFICULTY_GUIDANCE: Record<string, string> = {
 - Marks per question: 2–4
 - Command words: Describe, Explain, Calculate, Show, Draw
 - Style: Apply knowledge to given scenarios, combine 2 concepts, 2–3 step calculations
-- MCQ distractors: plausible but distinguishable with careful reasoning`,
+- MCQ distractors: plausible but distinguishable with careful reasoning
+- AO distribution: ~20% AO1, ~60% AO2 (application/calculation), ~20% AO3 (experimental)`,
 
   Challenging: `DIFFICULTY: Challenging — STRICTLY ENFORCE the following:
 - Target: Only 10–20% of students should answer fully correctly (A* discriminator questions)
 - Bloom's Level: L4 Analyse / L5 Evaluate / L6 Create
 - Marks per question: 4–8 (multi-part questions encouraged)
 - Command words: Evaluate, Discuss, Suggest, Compare, Deduce, Predict — NOT "State" or "Name"
+- AO distribution: ≤10% AO1, ~60% AO2 (complex analysis/synthesis), ~30% AO3 (experimental design/evaluation)
 - MANDATORY requirements for EVERY question:
   1. Place knowledge in UNFAMILIAR contexts (novel scenarios, not textbook examples)
   2. Require chaining 3+ concepts or calculation steps — no single-step answers
@@ -96,7 +99,9 @@ export const DIFFICULTY_GUIDANCE: Record<string, string> = {
 - A question that a student can answer from memory alone is NOT acceptable for this difficulty`,
 
   Balanced: `DIFFICULTY: Balanced — distribute across: Easy ~25% (80–90% pass rate), Medium ~50% (40–60% pass rate), Challenging ~25% (10–20% pass rate).
-Include a variety of command words and mark ranges (1–6 marks).`,
+Include a variety of command words and mark ranges (1–6 marks).
+AO distribution (strictly enforce): ~30% AO1 (recall/knowledge), ~50% AO2 (application/analysis/calculation), ~20% AO3 (experimental/evaluation).
+For a set of 4 questions: at least 1 AO1, 2 AO2, 1 AO3. Scale proportionally for larger sets.`,
 }
 
 export const CAMBRIDGE_COMMAND_WORDS: Record<string, string> = {
@@ -140,11 +145,12 @@ export const SUBJECT_SPECIFIC_RULES: Record<string, string> = {
 - Thermochemistry questions must specify units (kJ mol⁻¹) and sign conventions (exothermic = negative ΔH).
 - Organic chemistry: use displayed/structural formulae instructions precisely; specify chain length.
 - Precipitation reactions: write ionic equations, not just word equations.
-- Titration calculations: show formula triangle and units.`,
+- Titration/stoichiometry calculations: mark scheme must use M1 (mole ratio / method) + A1 (correct answer with unit).`,
 
   Physics: `PHYSICS-SPECIFIC RULES (strictly enforce):
 - ALL numerical answers must include SI units. Penalise missing units explicitly in mark scheme.
-- Equations must be stated before substitution (this scores AO2 mark).
+- Equations must be stated before substitution (this scores a B1 mark in mark scheme).
+- Mark scheme for calculations: B1 correct equation, M1 correct substitution, A1 correct answer with unit.
 - Use standard notation: m s⁻¹ (not m/s), kg m⁻³ (not kg/m³), N m⁻² or Pa.
 - For circuits: distinguish clearly between series and parallel; label EMF vs terminal p.d.
 - Graphs: axes must be labelled with quantity and unit (e.g. "Force / N").
@@ -157,13 +163,18 @@ export const SUBJECT_SPECIFIC_RULES: Record<string, string> = {
 - Genetics: use Punnett squares where required; clearly define allele notation (capital = dominant).
 - Mark scheme must credit specific named structures (e.g. "villus" not just "small intestine lining").
 - For experimental questions: always include a control variable and state what it controls for.
-- Evolution questions: reference natural selection mechanism (variation → selection pressure → survival → reproduction → inheritance).`,
+- Evolution questions: reference natural selection mechanism (variation → selection pressure → survival → reproduction → inheritance).
+- For calculations (e.g. magnification, percentage change): use M1/A1 mark notation.`,
 
   Mathematics: `MATHEMATICS-SPECIFIC RULES (strictly enforce):
 - All algebraic expressions must use correct LaTeX: $3x^2 - 5x + 2 = 0$, not plain text.
-- Mark scheme must award marks for METHOD even if final answer is wrong (method marks = M marks).
+- Mark scheme for ALL calculation questions MUST use M1/A1/B1 Cambridge notation:
+  • B1: correct formula or expression stated (e.g. "B1: $v^2 = u^2 + 2as$")
+  • M1: correct substitution / method step (e.g. "M1: substitutes $u=0$, $a=9.8$, $s=5$")
+  • A1: correct final answer with units (e.g. "A1: $v = 9.9$ m s⁻¹ (3 s.f.)")
+  • If a student uses a correct method but makes an arithmetic slip, they still earn M1 (not A1).
 - "Show that" questions: mark scheme must show full working chain; final line must match the given answer.
-- Geometry: state theorem names in mark scheme (e.g. "angle in semicircle = 90°").
+- Geometry: state theorem names in mark scheme (e.g. "B1: angle in semicircle = 90°").
 - Statistics: if using calculator — accept equivalent exact fractions or rounded decimals (specify 3 s.f. or 2 d.p.).
 - Probability: answers must be as fractions, decimals, or percentages — penalise "ratio" form in mark scheme.
 - Constructions: specify tolerance (e.g. ±2mm, ±2°).`,
@@ -172,17 +183,25 @@ export const SUBJECT_SPECIFIC_RULES: Record<string, string> = {
 /** Cambridge mark scheme formatting rules — applied to ALL subjects */
 export const MARK_SCHEME_FORMAT = `MARK SCHEME FORMAT RULES (strictly enforce for every question):
 1. List each marking point on its own numbered line: "1. [point]", "2. [point]", etc.
-2. Each point is worth exactly 1 mark unless explicitly stated as "2 marks for [x]".
-3. Accepted alternatives: write "Accept: [alternative]" on the line after the point.
+2. Mark types — use Cambridge M/A/B notation for ALL calculation questions (Maths, Physics, Chemistry):
+   - M1: Method mark — correct approach/formula/substitution, awarded even if arithmetic slip follows.
+     Format: "M1: [description of method, e.g. 'substitutes correctly into v = u + at']"
+   - A1: Accuracy mark — correct numerical answer following a correct method. Always paired with preceding M1.
+     Format: "A1: [value with unit, e.g. '12.5 m s⁻¹']"
+   - B1: Independent mark — not dependent on method (e.g. correct formula stated alone, correct graph reading, correct unit).
+     Format: "B1: [point]"
+   - FT: Follow-through — if a previous wrong answer is carried forward correctly, award FT mark.
+   For knowledge/descriptive questions: use plain numbered "1. [point]" format (1 mark each).
+3. Accepted alternatives: write "Accept: [alternative]" on the same line or line after the point.
 4. Rejected responses: write "Reject: [wrong answer / common misconception]" if relevant.
-5. For multi-step calculations: mark scheme must show full working with each step numbered.
-6. For extended writing (≥3 marks): use a LEVEL descriptor approach:
+5. For multi-step calculations: each step is a separate M1 or A1 line showing full working.
+6. For extended writing (≥3 marks, descriptive/explain/evaluate): use a LEVEL descriptor approach:
    - Level 3 (3 marks): Clear, detailed, well-structured response with all key points.
    - Level 2 (2 marks): Mostly correct with some detail missing.
    - Level 1 (1 mark): Basic response, limited scientific language, key points missing.
    Then list the "indicative content" — the ideas that earn credit.
-7. Do NOT write mark scheme as a paragraph. Use numbered bullet points only.
-8. Final answer line should state the correct value with unit (for calculations).`;
+7. Do NOT write mark scheme as a paragraph. Use M1/A1/B1 or numbered bullets only.
+8. Final answer line must state the correct value with SI unit (for calculations).`;
 
 // ---- Error handling ----
 
@@ -390,7 +409,14 @@ GENERATION RULES:
 
 9. difficultyStars: 1 = recall/knowledge (1–2 marks), 2 = application/analysis (2–4 marks), 3 = evaluation/synthesis (4+ marks, multi-step, unfamiliar context).
 
-10. marks: integer. Structured questions: sum of all sub-part marks. MCQ: always 1. Short answer: 1–3.`
+10. marks: integer. Structured questions: sum of all sub-part marks. MCQ: always 1. Short answer: 1–3.
+
+11. SUB-TOPIC DIVERSITY (strictly enforce): Each question in the set MUST test a DIFFERENT sub-topic or skill.
+    - Never generate two questions that assess the same concept, formula, or skill.
+    - Spread coverage across distinct areas of the topic as broadly as possible.
+    - If topic is "Mixed Topics", draw from at least 3 different major topic areas.
+    - Wrong: Q1=linear equations, Q2=linear equations (FORBIDDEN — same sub-topic twice)
+    - Right: Q1=linear equations, Q2=quadratic formula, Q3=simultaneous equations, Q4=inequalities`
 
   const parts: any[] = config.references && config.references.length > 0
     ? buildReferenceParts(config.references, config.difficulty)
@@ -405,6 +431,7 @@ GENERATION RULES:
     config: {
       responseMimeType: "application/json",
       maxOutputTokens: 8192,
+      temperature: 0.75,
       responseSchema: {
         type: Type.OBJECT,
         properties: {
