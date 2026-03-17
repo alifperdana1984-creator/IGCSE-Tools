@@ -21,6 +21,9 @@ export function sanitizeQuestion(q: any): Omit<QuestionItem, 'id'> {
     text = `${text}\n\n${optLines}`
   }
 
+  const aoRaw = (q.assessmentObjective ?? '').toString().toUpperCase()
+  const assessmentObjective = (['AO1', 'AO2', 'AO3'] as const).find(ao => aoRaw.includes(ao))
+
   return {
     text,
     answer: fix(q.answer),
@@ -31,6 +34,7 @@ export function sanitizeQuestion(q: any): Omit<QuestionItem, 'id'> {
     hasDiagram: Boolean(q.hasDiagram),
     ...(q.code ? { code: q.code } : {}),
     ...(q.syllabusObjective ? { syllabusObjective: q.syllabusObjective } : {}),
+    ...(assessmentObjective ? { assessmentObjective } : {}),
     ...(q.difficultyStars
       ? { difficultyStars: Math.min(3, Math.max(1, Number(q.difficultyStars))) as 1 | 2 | 3 }
       : {}),

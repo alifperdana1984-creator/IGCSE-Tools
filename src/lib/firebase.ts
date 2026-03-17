@@ -18,7 +18,7 @@ import {
   setDoc,
   writeBatch,
 } from 'firebase/firestore';
-import { getStorage, ref as storageRef, uploadBytes, getDownloadURL, deleteObject } from 'firebase/storage';
+import { getStorage, ref as storageRef, uploadBytes, getDownloadURL, deleteObject, listAll } from 'firebase/storage';
 import firebaseConfig from '../../firebase-applet-config.json';
 import type { Assessment, Question, Folder, Resource, ResourceType, SyllabusCache, PastPaperCache } from './types'
 
@@ -512,6 +512,21 @@ export const deleteUserData = async (): Promise<void> => {
       snap.docs.forEach(d => batch.delete(d.ref))
       await batch.commit()
     }
+  }
+
+  // Delete all Storage files under resources/{uid}/
+  try {
+    const userStorageRef = storageRef(storage, `resources/${uid}`)
+    const listResult = await listAll(userStorageRef)
+    // listAll only lists top-level; recurse one level (resourceId folders)
+    await Promise.all(
+      listResult.prefixes.map(async (folderRef) => {
+        const files = await listAll(folderRef)
+        await Promise.all(files.items.map(item => deleteObject(item).catch(() => {})))
+      })
+    )
+  } catch (e) {
+    console.warn('Storage cleanup failed, continuing with Auth deletion:', e)
   }
 
   // Finally delete the Auth account

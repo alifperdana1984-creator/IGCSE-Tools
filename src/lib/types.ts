@@ -15,6 +15,10 @@ export interface QuestionItem {
   hasDiagram: boolean
   syllabusObjective?: string
   difficultyStars?: 1 | 2 | 3
+  /** Cambridge Assessment Objective: AO1 Knowledge, AO2 Application, AO3 Experimental */
+  assessmentObjective?: 'AO1' | 'AO2' | 'AO3'
+  /** MCQ options — also embedded in text by sanitizeQuestion */
+  options?: string[]
 }
 
 export interface Assessment {

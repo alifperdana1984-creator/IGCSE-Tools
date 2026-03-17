@@ -1,6 +1,6 @@
 import type { QuestionItem, Assessment, AnalyzeFileResult, GenerationConfig } from './types'
 import type { Reference } from './ai'
-import { withRetry, DIFFICULTY_GUIDANCE, PAST_PAPER_FOCUS } from './gemini'
+import { withRetry, DIFFICULTY_GUIDANCE, PAST_PAPER_FOCUS, SUBJECT_SPECIFIC_RULES, MARK_SCHEME_FORMAT, CAMBRIDGE_COMMAND_WORDS } from './gemini'
 import { sanitizeQuestion, generateQuestionCode } from './sanitize'
 
 const ANTHROPIC_URL = 'https://api.anthropic.com/v1/messages'
@@ -36,31 +36,32 @@ async function anthropicMessages(
 const QUESTION_SCHEMA = `{
   "questions": [
     {
-      "text": "string (markdown, bold question text — do NOT embed A/B/C/D options here for MCQ)",
+      "text": "string (markdown question text — for structured: include stem paragraph then (a), (b), (c) sub-parts with [n] marks each)",
       "answer": "string (for MCQ: only the letter A, B, C, or D)",
-      "markScheme": "string",
+      "markScheme": "string (numbered points: '1. ...\\n2. ...' with Accept:/Reject: lines)",
       "marks": number,
-      "commandWord": "string",
+      "commandWord": "string (Cambridge command word)",
       "type": "mcq | short_answer | structured",
       "hasDiagram": boolean,
-      "syllabusObjective": "string (the specific Cambridge IGCSE learning objective, e.g. 'C4.1 – Define the term acid in terms of proton donation')",
+      "syllabusObjective": "string (e.g. 'C4.1 – Define the term acid in terms of proton donation')",
+      "assessmentObjective": "AO1 | AO2 | AO3",
       "difficultyStars": 1 or 2 or 3,
-      "options": ["string (option A text)", "string (option B text)", "string (option C text)", "string (option D text)"]
+      "options": ["option A text", "option B text", "option C text", "option D text"]
     }
   ]
 }`
 
 function buildSystem(subject: string): string {
-  return `You are an expert Cambridge IGCSE Assessment Designer for ${subject}.
-Create high-quality, syllabus-aligned assessments.
+  return `You are a Senior Cambridge IGCSE Chief Examiner and Assessment Designer for ${subject} with 20+ years of experience setting papers for Cambridge Assessment International Education (CAIE).
 ALWAYS respond with ONLY valid JSON — no markdown fences, no extra text outside the JSON object.
 
-Cambridge Command Words:
-- Describe: State the points of a topic / give characteristics and main features.
-- Explain: Set out purposes or reasons / make relationships evident.
-- Suggest: Apply knowledge to situations with a range of valid responses.
-- Evaluate: Judge or calculate the quality, importance, amount, or value.
-- Calculate: Work out from given facts, figures or information.`
+CAMBRIDGE COMMAND WORDS (use precisely as defined by CAIE):
+${Object.entries(CAMBRIDGE_COMMAND_WORDS).map(([w, d]) => `- ${w}: ${d}`).join('\n')}
+
+ASSESSMENT OBJECTIVES:
+- AO1 (Knowledge): recall, state, name, define — typically 1–2 mark questions
+- AO2 (Application): apply, calculate, interpret data, deduce — typically 2–4 mark questions
+- AO3 (Experimental): plan, evaluate methods, identify variables — typically 2–4 mark questions`
 }
 
 // sanitizeQuestion and generateQuestionCode imported from './sanitize'
@@ -132,20 +133,29 @@ export async function generateTest(
   onRetry?: (attempt: number) => void
 ): Promise<QuestionItem[]> {
   const key = config.apiKey ?? ''
+  const subjectRules = SUBJECT_SPECIFIC_RULES[config.subject] ?? ''
   const prompt = `Generate a Cambridge IGCSE ${config.subject} assessment.
-Topic: ${config.topic}
-${DIFFICULTY_GUIDANCE[config.difficulty] ?? `Difficulty: ${config.difficulty}`}
-Number of Questions: ${config.count}
-Question Type: ${config.type}
-Calculator: ${config.calculator ? 'Allowed' : 'Not Allowed'}
-${config.syllabusContext ? `Syllabus Context: ${config.syllabusContext}` : ''}
 
-Rules:
+CONFIGURATION:
+- Topic: ${config.topic}
+- ${DIFFICULTY_GUIDANCE[config.difficulty] ?? `Difficulty: ${config.difficulty}`}
+- Number of Questions: ${config.count}
+- Question Type: ${config.type}
+- Calculator: ${config.calculator ? 'Allowed' : 'Not Allowed'}
+${config.syllabusContext ? `- Syllabus Context/Focus: ${config.syllabusContext}` : ''}
+
+${subjectRules ? `${subjectRules}\n` : ''}${MARK_SCHEME_FORMAT}
+
+GENERATION RULES:
 1. Generate EXACTLY ${config.count} questions.
-2. CRITICAL: ALL mathematical expressions, variables, equations, and formulas MUST be wrapped in LaTeX inline delimiters: $x^2$, $3x^2 - 5x + 2 = 0$, $\frac{a}{b}$, $H_2O$. NEVER write math as plain text.
-3. FOR MCQ QUESTIONS: Set type to "mcq". Put the question stem in "text" (no A/B/C/D options embedded there). Put exactly 4 answer choices as plain strings in the "options" array. The "answer" field must be ONLY the letter "A", "B", "C", or "D". If 4 distinct text-based options cannot be written, use short_answer instead.
-4. syllabusObjective: the specific Cambridge IGCSE learning objective this question assesses. Format: "ref – objective statement" (e.g. "C4.1 – Define the term acid in terms of proton donation"). One sentence max. Do NOT add a Syllabus Reference line in the question text.
-5. difficultyStars: rate this specific question's cognitive demand as 1, 2, or 3. 1 = recall (State/Name/Define, 1-2 marks). 2 = application (Describe/Explain/Calculate, 2-4 marks). 3 = evaluation/synthesis (Evaluate/Discuss/Deduce, 4+ marks, multi-step).
+2. STRUCTURED QUESTIONS (type="structured", 4+ marks): Must use multi-part format with a shared context paragraph, then **(a)**, **(b)**, **(c)** sub-questions each with mark allocation **[n]**.
+3. MCQ QUESTIONS (type="mcq"): Exactly 4 options in "options" array. "answer" = only "A", "B", "C", or "D". All distractors must be plausible misconceptions.
+4. SHORT ANSWER (type="short_answer"): 1–3 marks, direct recall or simple application.
+5. LaTeX: ALL mathematical/chemical expressions MUST use LaTeX delimiters: $x^2$, $\\frac{a}{b}$, $H_2O$.
+6. syllabusObjective: "REF – statement" format. Do NOT add it as a line in question text.
+7. assessmentObjective: "AO1" (knowledge/recall), "AO2" (application/analysis), or "AO3" (experimental).
+8. difficultyStars: 1 = recall (1–2 marks), 2 = application (2–4 marks), 3 = synthesis/eval (4+ marks).
+9. marks: MCQ = 1; short_answer = 1–3; structured = sum of all sub-part marks.
 
 Respond with ONLY this JSON structure (no other text):
 ${QUESTION_SCHEMA}`
@@ -190,28 +200,30 @@ async function critiqueForDifficulty(
     .map((q, i) => `Q${i + 1} [${q.marks} marks] (${q.commandWord})\n${q.text}\n\nAnswer: ${q.answer}\n\nMark Scheme: ${q.markScheme}`)
     .join('\n\n---\n\n')
 
-  const prompt = `You are a Cambridge IGCSE Chief Examiner conducting a difficulty audit for ${subject}.
+  const prompt = `You are a Cambridge IGCSE Chief Examiner conducting a strict difficulty audit for ${subject}.
 
-REQUIRED DIFFICULTY: Challenging
+REQUIRED: Challenging — A* discriminator level
 - Target: Only 10–20% of students answer fully correctly
-- Must use higher-order thinking: Evaluate, Deduce, Predict, Suggest (NOT State/Name/Define)
-- Must require 3+ cognitive steps or multi-stage synthesis
-- Must place content in UNFAMILIAR contexts
+- Command words: Evaluate, Deduce, Predict, Suggest, Discuss — NEVER State/Name/Define
+- Must require 3+ distinct cognitive steps or multi-stage synthesis
+- Content must be in UNFAMILIAR context — novel scenario, not a textbook example
+- Mark schemes must have 4+ distinct points for 4+ mark questions
 
 QUESTIONS TO AUDIT:
 ${questionsText}
 
 TASK:
-1. Score each question 1–10 for difficulty (1 = trivial recall, 10 = A* discriminator)
-2. Any question scoring below 7 MUST be rewritten to reach 7+
-3. When rewriting: use unfamiliar context, require more synthesis steps, upgrade command word
-4. Keep the same syllabus topic and mark value
-5. Return ALL questions (revised or unchanged) as JSON
+1. Score each question 1–10 (1 = trivial recall, 10 = A* discriminator). Guide: 1–3 recall; 4–6 standard; 7–8 A grade; 9–10 A* discrimination.
+2. Any question scoring 6 or below MUST be rewritten to reach 8+.
+3. When rewriting: unfamiliar context, more synthesis steps, stronger command word, improved mark scheme.
+4. Keep same syllabus topic and mark value.
+5. If already 8+ — preserve exactly, do NOT simplify.
+6. Return ALL ${questions.length} questions as JSON.
 
 Respond with ONLY this JSON structure (no other text):
 ${QUESTION_SCHEMA}`
 
-  const systemPrompt = `You are a Senior Cambridge IGCSE Chief Examiner. Your only job is to ensure questions are genuinely challenging — at the A* discrimination level. Be strict: if a question can be answered from memory, rewrite it.
+  const systemPrompt = `You are a Senior Cambridge IGCSE Chief Examiner. Your only job is to ensure questions discriminate between A and A* candidates. Be ruthless: any question answerable from memory must be rewritten.
 ALWAYS respond with ONLY valid JSON — no markdown fences, no extra text outside the JSON object.`
 
   const raw = await withRetry(() =>
@@ -243,12 +255,21 @@ export async function auditTest(
     .map((q, i) => `Q${i + 1} [${q.marks} marks] (${q.commandWord})\n${q.text}\n\nAnswer: ${q.answer}\n\nMark Scheme: ${q.markScheme}`)
     .join('\n\n---\n\n')
 
-  const prompt = `Review this Cambridge IGCSE ${subject} assessment and fix any errors.
-Check: command words, mark allocation, scientific accuracy, formatting.
-Return ONLY the corrected assessment as JSON (no other text):
+  const prompt = `You are a Principal Cambridge IGCSE Examiner for ${subject}. Audit this assessment and return a fully corrected version.
+
+AUDIT CRITERIA (fix ALL violations):
+1. Command words must match CAIE definitions exactly.
+2. Mark scheme must use numbered points ("1. ...", "2. ...") with "Accept:" / "Reject:" lines. Fix paragraph-style mark schemes.
+3. Mark point count must equal marks awarded. Fix mismatches.
+4. Check all scientific/mathematical accuracy. Fix errors.
+5. Structured questions (4+ marks) must have **(a)**, **(b)**, **(c)** sub-parts with **[n]** allocations.
+6. All math/chemistry must use LaTeX delimiters.
+7. syllabusObjective must follow "REF – statement" format.
+
+Return the ENTIRE assessment (all questions corrected or unchanged) as JSON (no other text):
 { "questions": [...] }
 
-ASSESSMENT:
+ASSESSMENT TO AUDIT:
 ${questionsText}`
 
   const raw = await withRetry(() =>

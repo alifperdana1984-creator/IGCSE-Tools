@@ -11,7 +11,7 @@ import {
 import { estimateCostIDR, MODEL_PRICING } from '../../lib/pricing'
 import {
   PROVIDER_LABELS, PROVIDER_MODELS, API_KEY_PLACEHOLDERS, API_KEY_URLS, API_USAGE_URLS,
-  DEFAULT_AUDIT_MODELS,
+  DEFAULT_AUDIT_MODELS, FREE_TIER_INFO,
 } from '../../lib/providers'
 
 const QUESTION_TYPES = ['Mixed', 'Multiple Choice', 'Short Answer', 'Structured']
@@ -233,6 +233,12 @@ export function Sidebar({
           >
             {models.map(m => <option key={m.id} value={m.id}>{m.label}</option>)}
           </select>
+          {(() => {
+            const hint = models.find(m => m.id === config.model)?.hint
+            return hint && !customModel.trim()
+              ? <p className="text-[11px] text-stone-400 mt-0.5 leading-snug">{hint}</p>
+              : null
+          })()}
           <input
             type="text"
             value={customModel}
@@ -461,60 +467,89 @@ export function Sidebar({
           >
             <span className="flex items-center gap-1">
               <KeyRound className="w-3.5 h-3.5" /> API Settings
-              {!currentApiKey && <span className="ml-1 text-amber-500 font-normal">(shared key)</span>}
+              {!currentApiKey && <span className="ml-1 text-amber-500 font-normal">(key required)</span>}
             </span>
             {settingsOpen ? <ChevronDown className="w-3.5 h-3.5" /> : <ChevronRight className="w-3.5 h-3.5" />}
           </button>
 
           {settingsOpen && (
             <div className="flex flex-col gap-3">
-              {(Object.keys(PROVIDER_LABELS) as AIProvider[]).map(p => (
-                <div key={p}>
-                  <label className="text-xs text-stone-500 mb-1 flex items-center justify-between">
-                    <span>{PROVIDER_LABELS[p]} API Key</span>
-                    <span className="flex items-center gap-2">
-                      <a
-                        href={API_KEY_URLS[p]}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="text-emerald-600 hover:text-emerald-700 flex items-center gap-0.5"
-                      >
-                        Get key <ExternalLink className="w-2.5 h-2.5" />
-                      </a>
-                      {apiKeys[p] && (
+              <p className="text-xs text-amber-600 bg-amber-50 border border-amber-200 rounded-lg px-2 py-1.5 leading-snug">
+                Keys are saved in your browser only and never sent to our servers. Clear your browser data to remove them.
+              </p>
+              {(Object.keys(PROVIDER_LABELS) as AIProvider[]).map(p => {
+                const tier = FREE_TIER_INFO[p]
+                const hasKey = !!apiKeys[p]
+                return (
+                  <div key={p}>
+                    {/* Provider header row */}
+                    <label className="text-xs text-stone-500 mb-1 flex items-center justify-between">
+                      <span className="flex items-center gap-1.5">
+                        {PROVIDER_LABELS[p]} API Key
+                        <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded-full ${tier.available ? 'bg-emerald-100 text-emerald-700' : 'bg-stone-100 text-stone-500'}`}>
+                          {tier.available ? '✓ Free' : 'Paid'}
+                        </span>
+                      </span>
+                      <span className="flex items-center gap-2">
                         <a
-                          href={API_USAGE_URLS[p]}
+                          href={API_KEY_URLS[p]}
                           target="_blank"
                           rel="noopener noreferrer"
-                          className="text-stone-400 hover:text-stone-600 flex items-center gap-0.5"
+                          className="text-emerald-600 hover:text-emerald-700 flex items-center gap-0.5"
                         >
-                          Usage <ExternalLink className="w-2.5 h-2.5" />
+                          Get key <ExternalLink className="w-2.5 h-2.5" />
                         </a>
+                        {hasKey && (
+                          <a
+                            href={API_USAGE_URLS[p]}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-stone-400 hover:text-stone-600 flex items-center gap-0.5"
+                          >
+                            Usage <ExternalLink className="w-2.5 h-2.5" />
+                          </a>
+                        )}
+                      </span>
+                    </label>
+
+                    {/* Key input */}
+                    <div className="flex gap-1">
+                      <input
+                        type={showApiKey ? 'text' : 'password'}
+                        value={apiKeys[p] ?? ''}
+                        onChange={e => onApiKeyChange(p, e.target.value)}
+                        placeholder={API_KEY_PLACEHOLDERS[p]}
+                        className="flex-1 text-xs border border-stone-300 rounded-lg px-2 py-1.5 font-mono min-w-0"
+                      />
+                      {p === provider && (
+                        <button
+                          onClick={() => setShowApiKey(s => !s)}
+                          className="p-1.5 text-stone-400 hover:text-stone-600 border border-stone-300 rounded-lg shrink-0"
+                        >
+                          {showApiKey ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                        </button>
                       )}
-                    </span>
-                  </label>
-                  <div className="flex gap-1">
-                    <input
-                      type={showApiKey ? 'text' : 'password'}
-                      value={apiKeys[p] ?? ''}
-                      onChange={e => onApiKeyChange(p, e.target.value)}
-                      placeholder={API_KEY_PLACEHOLDERS[p]}
-                      className="flex-1 text-xs border border-stone-300 rounded-lg px-2 py-1.5 font-mono min-w-0"
-                    />
-                    {p === provider && (
-                      <button
-                        onClick={() => setShowApiKey(s => !s)}
-                        className="p-1.5 text-stone-400 hover:text-stone-600 border border-stone-300 rounded-lg shrink-0"
-                      >
-                        {showApiKey ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
-                      </button>
+                    </div>
+
+                    {/* Status / guidance */}
+                    {hasKey ? (
+                      <p className="text-xs text-emerald-600 mt-0.5">✓ Using your {PROVIDER_LABELS[p]} key</p>
+                    ) : (
+                      <div className="mt-1.5 bg-stone-50 border border-stone-200 rounded-lg px-2 py-1.5">
+                        <p className="text-[11px] text-stone-500 mb-1">{tier.description}</p>
+                        <ol className="text-[11px] text-stone-500 space-y-0.5 list-none">
+                          {tier.steps.map((step, i) => (
+                            <li key={i} className="flex gap-1.5">
+                              <span className="text-stone-400 shrink-0">{i + 1}.</span>
+                              <span>{step}</span>
+                            </li>
+                          ))}
+                        </ol>
+                      </div>
                     )}
                   </div>
-                  {apiKeys[p] && (
-                    <p className="text-xs text-emerald-600 mt-0.5">Using your {PROVIDER_LABELS[p]} key</p>
-                  )}
-                </div>
-              ))}
+                )
+              })}
             </div>
           )}
         </div>

@@ -23,7 +23,7 @@ const DEFAULT_CONFIG: GenerationConfig = {
   subject: 'Mathematics',
   topic: 'Mixed Topics',
   difficulty: 'Balanced',
-  count: 10,
+  count: 4,
   type: 'Mixed',
   calculator: true,
   model: DEFAULT_MODELS['gemini'],
@@ -270,10 +270,15 @@ export default function App() {
   }, [view, selectedFolderId, user]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleGenerate = useCallback(() => {
+    if (!currentApiKey) {
+      notify('No API key set. Open API Settings and add your key to get started.', 'error')
+      setApiSettingsOpen(true)
+      return
+    }
     setView('main')
     const effectiveModel = customModel.trim() || config.model
     generation.generate({ ...config, provider, model: effectiveModel, syllabusContext }, resources.knowledgeBase, resources.getBase64)
-  }, [config, provider, customModel, syllabusContext, resources.knowledgeBase, resources.getBase64, generation])
+  }, [config, provider, customModel, syllabusContext, currentApiKey, resources.knowledgeBase, resources.getBase64, generation, notify])
 
   // Smart save: update if already in Firestore, else create new
   const handleSave = useCallback(async () => {
