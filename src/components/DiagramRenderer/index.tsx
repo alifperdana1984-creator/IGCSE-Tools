@@ -63,11 +63,12 @@ function CartesianGrid({ spec }: { spec: CartesianGridSpec }) {
 
       {/* Segments */}
       {spec.segments?.map((seg, i) => {
-        const mx = (tx(seg.x1) + tx(seg.x2)) / 2
-        const my = (ty(seg.y1) + ty(seg.y2)) / 2
+        const sx1 = tx(seg.x1), sy1 = ty(seg.y1), sx2 = tx(seg.x2), sy2 = ty(seg.y2)
+        if (!isFinite(sx1) || !isFinite(sy1) || !isFinite(sx2) || !isFinite(sy2)) return null
+        const mx = (sx1 + sx2) / 2, my = (sy1 + sy2) / 2
         return (
           <g key={`seg${i}`}>
-            <line x1={tx(seg.x1)} y1={ty(seg.y1)} x2={tx(seg.x2)} y2={ty(seg.y2)}
+            <line x1={sx1} y1={sy1} x2={sx2} y2={sy2}
               stroke="#333" strokeWidth="1.5"
               strokeDasharray={seg.dashed ? '5,3' : undefined} />
             {seg.label && <text x={mx + 6} y={my - 5} fontSize="11" fill="#555">{seg.label}</text>}
@@ -115,6 +116,7 @@ function CartesianGrid({ spec }: { spec: CartesianGridSpec }) {
       {/* Points */}
       {spec.points?.map((pt, i) => {
         const sx = tx(pt.x), sy = ty(pt.y)
+        if (!isFinite(sx) || !isFinite(sy)) return null
         const col = pt.color ?? '#dc2626'
         return (
           <g key={`pt${i}`}>
@@ -154,7 +156,8 @@ function GeometricShape({ spec }: { spec: GeometricShapeSpec }) {
         const stroke = shape.stroke ?? '#1a1a1a'
         const fill = shape.fill ?? 'none'
 
-        if (shape.kind === 'circle' && shape.cx != null && shape.cy != null && shape.radius != null) {
+        if (shape.kind === 'circle' && shape.cx != null && shape.cy != null && shape.radius != null
+            && isFinite(Number(shape.cx)) && isFinite(Number(shape.cy)) && isFinite(Number(shape.radius))) {
           return (
             <g key={si}>
               <circle cx={shape.cx} cy={shape.cy} r={shape.radius}

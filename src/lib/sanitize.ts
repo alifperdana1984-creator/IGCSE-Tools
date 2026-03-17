@@ -9,11 +9,12 @@ export function normalizeDiagram(raw: unknown): DiagramSpec | undefined {
   const dt = d.diagramType as string
   if (!KNOWN_DIAGRAM_TYPES.has(dt)) return undefined
   // Ensure required numeric ranges exist for types that need them
+  const isFiniteNum = (v: unknown) => typeof v === 'number' && isFinite(v)
   if (dt === 'cartesian_grid') {
-    if (d.xMin == null || d.xMax == null || d.yMin == null || d.yMax == null) return undefined
+    if (!isFiniteNum(d.xMin) || !isFiniteNum(d.xMax) || !isFiniteNum(d.yMin) || !isFiniteNum(d.yMax)) return undefined
   }
   if (dt === 'number_line') {
-    if (d.min == null || d.max == null) return undefined
+    if (!isFiniteNum(d.min) || !isFiniteNum(d.max)) return undefined
   }
   // Normalise nullable arrays to empty arrays so renderers never call .map() on null/undefined
   for (const key of ['points', 'segments', 'polygons', 'shapes', 'nlPoints', 'ranges', 'bars'] as const) {
