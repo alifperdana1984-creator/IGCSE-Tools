@@ -139,7 +139,7 @@ export function Sidebar({
   const currentApiKey = apiKeys[provider] ?? ''
 
   return (
-    <div className="w-80 border-r border-stone-200 bg-stone-50 flex flex-col h-full overflow-y-auto">
+    <div className="w-96 border-r border-stone-200 bg-stone-50 flex flex-col h-full overflow-y-auto">
       <div className="p-4 border-b border-stone-200">
         <h2 className="font-semibold text-stone-800 text-sm flex items-center gap-2">
           <BrainCircuit className="w-4 h-4 text-emerald-600" />
