@@ -25,6 +25,45 @@ function normalizeDiagram(raw: unknown): DiagramSpec | undefined {
   return raw as DiagramSpec
 }
 
+/** If all MCQ options are coordinate pairs and the answer is also a coordinate pair,
+ *  auto-generate a cartesian_grid diagram so the question is actually answerable. */
+function tryAutoCartesianDiagram(answer: string, options: string[]): DiagramSpec | undefined {
+  const coordRe = /^\s*\(?\s*(-?\d+(?:\.\d+)?)\s*,\s*(-?\d+(?:\.\d+)?)\s*\)?\s*$/
+  const parsed = options.map(o => {
+    const m = o.match(coordRe)
+    return m ? { x: Number(m[1]), y: Number(m[2]) } : null
+  })
+  if (parsed.length < 2 || parsed.some(c => c === null)) return undefined
+
+  // Answer may be "A", "(2, 3)", "A) (2, 3)", etc.
+  let px: number, py: number
+  const directMatch = answer.match(coordRe)
+  if (directMatch) {
+    px = Number(directMatch[1]); py = Number(directMatch[2])
+  } else {
+    const letter = answer.trim().match(/^[A-D]/i)?.[0]?.toUpperCase()
+    if (!letter) return undefined
+    const idx = ['A', 'B', 'C', 'D'].indexOf(letter)
+    const opt = parsed[idx]
+    if (!opt) return undefined
+    px = opt.x; py = opt.y
+  }
+
+  const allX = (parsed.filter(Boolean) as { x: number; y: number }[]).map(c => c.x)
+  const allY = (parsed.filter(Boolean) as { x: number; y: number }[]).map(c => c.y)
+  const maxAbs = Math.max(...allX.map(Math.abs), ...allY.map(Math.abs), Math.abs(px), Math.abs(py), 3)
+  const bound = Math.ceil(maxAbs) + 1
+
+  return {
+    diagramType: 'cartesian_grid',
+    xMin: -bound, xMax: bound,
+    yMin: -bound, yMax: bound,
+    gridStep: 1,
+    points: [{ label: 'P', x: px, y: py, color: '#7c3aed' }],
+    segments: [], polygons: [],
+  } as DiagramSpec
+}
+
 const SUBJECT_CODES: Record<string, string> = {
   Mathematics: 'MAT', Biology: 'BIO', Physics: 'PHY', Chemistry: 'CHM',
 }
@@ -78,7 +117,14 @@ export function sanitizeQuestion(q: any): Omit<QuestionItem, 'id'> {
   const assessmentObjective = (['AO1', 'AO2', 'AO3'] as const).find(ao => aoRaw.includes(ao))
 
   const normalizedText = normalizeSvgMarkdown(text)
-  const diagram = normalizeDiagram(q.diagram)
+  const rawDiagram = normalizeDiagram(q.diagram)
+
+  // Auto-generate a cartesian_grid for coordinate MCQ questions when the model didn't provide one
+  const diagram = rawDiagram ?? (
+    type === 'mcq' && options.length >= 2
+      ? tryAutoCartesianDiagram(fix(q.answer ?? ''), options)
+      : undefined
+  )
 
   // Detect questions that say "in the diagram" but have no SVG or structured diagram field.
   const referencesDiagram = /\b(in the diagram|the diagram shows|refer to the diagram|as shown in the diagram|from the diagram|on the diagram|shown on the (grid|diagram|figure|graph)|the (grid|figure|graph) shows|shown in the (figure|graph|grid)|as shown (below|above)|on the (grid|graph) (below|above|shown)|shown on a (grid|graph)|coordinates? (?:of|shown)|point [A-Z] shown)\b/i.test(normalizedText)
