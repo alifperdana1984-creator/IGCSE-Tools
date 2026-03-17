@@ -377,7 +377,7 @@ GENERATION RULES:
 
 4. SHORT ANSWER (type="short_answer"): 1–3 marks. Direct recall or simple application. No sub-parts needed.
 
-5. LaTeX: ALL mathematical expressions, variables, equations, and formulas MUST be wrapped in LaTeX delimiters: $x^2$, $\\frac{a}{b}$, $H_2O$. NEVER write math as plain text.
+5. LaTeX: ALL mathematical expressions, variables, equations, and formulas MUST be wrapped in LaTeX delimiters: $x^2$, $\\frac{a}{b}$, $H_2O$. NEVER write math as plain text. For currency amounts (e.g. dollars), write the number only ("1500") or use a word prefix ("USD 1500") — NEVER use bare $ as a currency symbol, as it conflicts with LaTeX delimiters.
 
 6. Diagrams: For questions requiring a diagram, include SVG inside the 'text' field as \`\`\`svg ... \`\`\` using camelCase attributes. Set hasDiagram=true.
 

@@ -7,11 +7,19 @@ const BARE_LATEX_RE = /(\\(?:frac|sqrt|sum|int|prod|lim|infty|partial|Delta|alph
  *    (handles MCQ options where question stem has $ but options don't)
  */
 export function preprocessLatex(text: string): string {
-  // Step 0: escape currency dollar signs ($5000, $3.50) but NOT math blocks like $1000 \times 4$
-  // Currency pattern: $digits followed by space+letter (plain English word, not LaTeX command/operator)
-  // "$5000 at a rate" → &#36;5000   |   "$1000 \times" → unchanged   |   "$4$" → unchanged
-  // Use HTML entity &#36; instead of \$ so the backslash doesn't show in rendered output
-  let result = text.replace(/\$(\d[\d,.]*)(?=\s[a-zA-Z])/g, (_, digits) => `&#36;${digits}`)
+  // Step 0: escape currency dollar signs so they don't get parsed as LaTeX math delimiters.
+  // Uses HTML entity &#36; (renders as $) instead of \$ (shows backslash in some renderers).
+  //
+  // Escape $DIGITS when followed by:
+  //   • space + 3+ letters (prose word: "for", "per", "years", "invested"…)
+  //   • punctuation or newline (end of clause/option: $60, $1500,)
+  //   • end of line/string (last option with no trailing char)
+  //
+  // NOT escaped (preserved as math):
+  //   • $3x^2$  — digit immediately followed by letter/operator (no space or punctuation after)
+  //   • $3 cm$  — 2-letter units like cm, kg, km stay intact
+  //   • $\frac  — backslash after $ → clearly LaTeX
+  let result = text.replace(/\$(\d[\d,.]*)(?=\s+[a-zA-Z]{3,}|[,.)!?\n]|\s*$)/gm, (_, digits) => `&#36;${digits}`)
 
   // Step 0.5: repair malformed inline sequences like \alpha$$\beta
   // produced by some model outputs; this avoids KaTeX parse errors.

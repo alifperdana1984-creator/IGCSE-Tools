@@ -159,7 +159,7 @@ GENERATION RULES:
 2. STRUCTURED QUESTIONS (type="structured", 4+ marks): Must use multi-part format with a shared context paragraph, then **(a)**, **(b)**, **(c)** sub-questions each with mark allocation **[n]**.
 3. MCQ QUESTIONS (type="mcq"): Exactly 4 options in "options" array (no letter prefix). "answer" = only "A", "B", "C", or "D". All distractors must be plausible misconceptions. IMPORTANT: any math in an option MUST be in $...$, e.g. "$2x^2 + 7x$", "$120^{\\circ}$".
 4. SHORT ANSWER (type="short_answer"): 1–3 marks, direct recall or simple application.
-5. LaTeX: ALL mathematical/chemical expressions MUST use LaTeX delimiters: $x^2$, $\\frac{a}{b}$, $H_2O$.
+5. LaTeX: ALL mathematical/chemical expressions MUST use LaTeX delimiters: $x^2$, $\\frac{a}{b}$, $H_2O$. For currency amounts, write the number only ("1500") or use "USD 1500" — NEVER use bare $ as a currency symbol.
 6. syllabusObjective: "REF – statement" format. Do NOT add it as a line in question text.
 7. assessmentObjective: "AO1" (knowledge/recall), "AO2" (application/analysis), or "AO3" (experimental).
 8. difficultyStars: 1 = recall (1–2 marks), 2 = application (2–4 marks), 3 = synthesis/eval (4+ marks).
