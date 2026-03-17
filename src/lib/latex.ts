@@ -12,6 +12,10 @@ export function preprocessLatex(text: string): string {
   // "$5000 at a rate" → \$5000   |   "$1000 \times" → unchanged   |   "$4$" → unchanged
   let result = text.replace(/\$(\d[\d,.]*)(?=\s[a-zA-Z])/g, (_, digits) => `\\$${digits}`)
 
+  // Step 0.5: repair malformed inline sequences like \alpha$$\beta
+  // produced by some model outputs; this avoids KaTeX parse errors.
+  result = result.replace(/(\\[A-Za-z]+)\s*\$\$\s*(\\[A-Za-z]+)/g, '$1 $2')
+
   // Step 1: merge accidentally split adjacent math blocks
   result = result.replace(/\$([^$\n]+?)\$\$([^$\n]+?)\$/g, (_m, a, b) => `$${a}${b}$`)
 

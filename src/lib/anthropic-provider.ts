@@ -1,17 +1,24 @@
 import type { QuestionItem, Assessment, AnalyzeFileResult, GenerationConfig } from './types'
 import type { Reference } from './ai'
+import type { UsageCallback } from './ai'
 import { withRetry, DIFFICULTY_GUIDANCE, PAST_PAPER_FOCUS, SUBJECT_SPECIFIC_RULES, MARK_SCHEME_FORMAT, CAMBRIDGE_COMMAND_WORDS } from './gemini'
 import { sanitizeQuestion, generateQuestionCode } from './sanitize'
 import { parseJsonWithRecovery } from './json'
 
 const ANTHROPIC_URL = 'https://api.anthropic.com/v1/messages'
 
+interface AnthropicResult {
+  text: string
+  inputTokens: number
+  outputTokens: number
+}
+
 async function anthropicMessages(
   messages: { role: string; content: any }[],
   systemPrompt: string,
   model: string,
   apiKey: string,
-): Promise<string> {
+): Promise<AnthropicResult> {
   const res = await fetch(ANTHROPIC_URL, {
     method: 'POST',
     headers: {
@@ -31,7 +38,11 @@ async function anthropicMessages(
   }
 
   const data = await res.json()
-  return data.content[0].text as string
+  return {
+    text: data.content[0].text as string,
+    inputTokens: Number(data.usage?.input_tokens ?? 0),
+    outputTokens: Number(data.usage?.output_tokens ?? 0),
+  }
 }
 
 const QUESTION_SCHEMA = `{
@@ -126,7 +137,8 @@ function buildAnthropicReferenceParts(references: Reference[], difficulty?: stri
 
 export async function generateTest(
   config: GenerationConfig & { references?: Reference[]; apiKey?: string },
-  onRetry?: (attempt: number) => void
+  onRetry?: (attempt: number) => void,
+  onUsage?: UsageCallback
 ): Promise<QuestionItem[]> {
   const key = config.apiKey ?? ''
   const subjectRules = SUBJECT_SPECIFIC_RULES[config.subject] ?? ''
@@ -163,8 +175,9 @@ ${QUESTION_SCHEMA}`
   content.push({ type: 'text', text: prompt })
 
   const parsed = await withRetry(async () => {
-    const raw = await anthropicMessages([{ role: 'user', content }], buildSystem(config.subject), config.model, key)
-    return safeParseJson(raw)
+    const res = await anthropicMessages([{ role: 'user', content }], buildSystem(config.subject), config.model, key)
+    if (res.inputTokens > 0 || res.outputTokens > 0) onUsage?.(config.model, res.inputTokens, res.outputTokens)
+    return safeParseJson(res.text)
   }, 3, onRetry)
   let questions: QuestionItem[] = (parsed.questions ?? []).map((q: any) => {
     const sanitized = sanitizeQuestion(q)
@@ -189,6 +202,7 @@ async function critiqueForDifficulty(
   model: string,
   apiKey: string,
   onRetry?: (attempt: number) => void,
+  onUsage?: UsageCallback,
 ): Promise<QuestionItem[]> {
   const questionsText = questions
     .map((q, i) => `Q${i + 1} [${q.marks} marks] (${q.commandWord})\n${q.text}\n\nAnswer: ${q.answer}\n\nMark Scheme: ${q.markScheme}`)
@@ -221,8 +235,9 @@ ${QUESTION_SCHEMA}`
 ALWAYS respond with ONLY valid JSON — no markdown fences, no extra text outside the JSON object.`
 
   const parsed = await withRetry(async () => {
-    const raw = await anthropicMessages([{ role: 'user', content: prompt }], systemPrompt, model, apiKey)
-    return safeParseJson(raw)
+    const res = await anthropicMessages([{ role: 'user', content: prompt }], systemPrompt, model, apiKey)
+    if (res.inputTokens > 0 || res.outputTokens > 0) onUsage?.(model, res.inputTokens, res.outputTokens)
+    return safeParseJson(res.text)
   }, 3, onRetry)
   return (parsed.questions ?? []).map((q: any, i: number) => {
     const sanitized = sanitizeQuestion(q)
@@ -241,7 +256,8 @@ export async function auditTest(
   subject: string,
   assessment: Assessment,
   model: string,
-  apiKey?: string
+  apiKey?: string,
+  onUsage?: UsageCallback
 ): Promise<QuestionItem[]> {
   const questionsText = assessment.questions
     .map((q, i) => `Q${i + 1} [${q.marks} marks] (${q.commandWord})\n${q.text}\n\nAnswer: ${q.answer}\n\nMark Scheme: ${q.markScheme}`)
@@ -265,8 +281,9 @@ ASSESSMENT TO AUDIT:
 ${questionsText}`
 
   const parsed = await withRetry(async () => {
-    const raw = await anthropicMessages([{ role: 'user', content: prompt }], buildSystem(subject), model, apiKey ?? '')
-    return safeParseJson(raw)
+    const res = await anthropicMessages([{ role: 'user', content: prompt }], buildSystem(subject), model, apiKey ?? '')
+    if (res.inputTokens > 0 || res.outputTokens > 0) onUsage?.(model, res.inputTokens, res.outputTokens)
+    return safeParseJson(res.text)
   })
   return (parsed.questions ?? []).map((q: any, i: number) => {
     const sanitized = sanitizeQuestion(q)
@@ -312,7 +329,7 @@ Provide detailed feedback in Markdown. Be strict but fair.`
     )
   )
 
-  return raw
+  return raw.text
 }
 
 export async function analyzeFile(
@@ -355,8 +372,8 @@ Actually use this exact structure:
   content.push({ type: 'text', text: prompt })
 
   const parsed = await withRetry(async () => {
-    const raw = await anthropicMessages([{ role: 'user', content }], buildSystem(subject), model, apiKey ?? '')
-    return safeParseJson(raw)
+    const res = await anthropicMessages([{ role: 'user', content }], buildSystem(subject), model, apiKey ?? '')
+    return safeParseJson(res.text)
   })
   return {
     analysis: parsed.analysis ?? '',

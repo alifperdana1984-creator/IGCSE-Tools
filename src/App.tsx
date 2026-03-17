@@ -420,6 +420,7 @@ export default function App() {
         isGenerating={generation.isGenerating}
         isAuditing={generation.isAuditing}
         retryCount={generation.retryCount}
+        lastRunCostIDR={generation.lastRunCostIDR}
         resources={resources.resources}
         knowledgeBase={resources.knowledgeBase}
         onUploadResource={(file, subject, resourceType) => {

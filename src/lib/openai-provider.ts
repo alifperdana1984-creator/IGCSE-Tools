@@ -1,17 +1,24 @@
 import type { QuestionItem, Assessment, AnalyzeFileResult, GenerationConfig, AIError } from './types'
 import type { Reference } from './ai'
+import type { UsageCallback } from './ai'
 import { withRetry, DIFFICULTY_GUIDANCE, PAST_PAPER_FOCUS, SUBJECT_SPECIFIC_RULES, MARK_SCHEME_FORMAT, CAMBRIDGE_COMMAND_WORDS, ASSESSMENT_OBJECTIVES } from './gemini'
 import { sanitizeQuestion, generateQuestionCode } from './sanitize'
 import { parseJsonWithRecovery } from './json'
 
 const OPENAI_URL = 'https://api.openai.com/v1/chat/completions'
 
+interface OpenAIChatResult {
+  text: string
+  inputTokens: number
+  outputTokens: number
+}
+
 async function openaiChat(
   messages: { role: string; content: any }[],
   model: string,
   apiKey: string,
   systemPrompt?: string,
-): Promise<string> {
+): Promise<OpenAIChatResult> {
   const allMessages = systemPrompt
     ? [{ role: 'system', content: systemPrompt }, ...messages]
     : messages
@@ -38,7 +45,11 @@ async function openaiChat(
   }
 
   const data = await res.json()
-  return data.choices[0].message.content as string
+  return {
+    text: data.choices[0].message.content as string,
+    inputTokens: Number(data.usage?.prompt_tokens ?? 0),
+    outputTokens: Number(data.usage?.completion_tokens ?? 0),
+  }
 }
 
 const QUESTION_SCHEMA = `{
@@ -118,7 +129,8 @@ function buildOpenAIReferenceContext(references: Reference[], difficulty?: strin
 }
 export async function generateTest(
   config: GenerationConfig & { references?: Reference[]; apiKey?: string },
-  onRetry?: (attempt: number) => void
+  onRetry?: (attempt: number) => void,
+  onUsage?: UsageCallback
 ): Promise<QuestionItem[]> {
   const key = config.apiKey ?? ''
   const refContext = config.references && config.references.length > 0
@@ -159,8 +171,9 @@ Respond with JSON matching this schema: ${QUESTION_SCHEMA}`
   userContent.push({ type: 'text', text: prompt })
 
   const parsed = await withRetry(async () => {
-    const raw = await openaiChat([{ role: 'user', content: userContent }], config.model, key, buildSystemPrompt(config.subject))
-    return parseJsonWithRecovery<{ questions: any[] }>(raw, 'OpenAI')
+    const res: any = await openaiChat([{ role: 'user', content: userContent }], config.model, key, buildSystemPrompt(config.subject))
+    if ((res.inputTokens ?? 0) > 0 || (res.outputTokens ?? 0) > 0) onUsage?.(config.model, res.inputTokens, res.outputTokens)
+    return parseJsonWithRecovery<{ questions: any[] }>(res.text, 'OpenAI')
   }, 3, onRetry)
   let questions: QuestionItem[] = (parsed.questions ?? []).map(q => {
     const sanitized = sanitizeQuestion(q)
@@ -185,6 +198,7 @@ async function critiqueForDifficulty(
   model: string,
   apiKey: string,
   onRetry?: (attempt: number) => void,
+  onUsage?: UsageCallback,
 ): Promise<QuestionItem[]> {
   const questionsText = questions
     .map((q, i) => `Q${i + 1} [${q.marks} marks] (${q.commandWord})\n${q.text}\n\nAnswer: ${q.answer}\n\nMark Scheme: ${q.markScheme}`)
@@ -214,8 +228,9 @@ TASK:
 ALWAYS respond with ONLY valid JSON — no markdown fences, no extra text outside the JSON object.`
 
   const parsed = await withRetry(async () => {
-    const raw = await openaiChat([{ role: 'user', content: prompt }], model, apiKey, systemPrompt)
-    return parseJsonWithRecovery<{ questions: any[] }>(raw, 'OpenAI')
+    const res: any = await openaiChat([{ role: 'user', content: prompt }], model, apiKey, systemPrompt)
+    if ((res.inputTokens ?? 0) > 0 || (res.outputTokens ?? 0) > 0) onUsage?.(model, res.inputTokens, res.outputTokens)
+    return parseJsonWithRecovery<{ questions: any[] }>(res.text, 'OpenAI')
   }, 3, onRetry)
   return (parsed.questions ?? []).map((q, i) => {
     const sanitized = sanitizeQuestion(q)
@@ -234,7 +249,8 @@ export async function auditTest(
   subject: string,
   assessment: Assessment,
   model: string,
-  apiKey?: string
+  apiKey?: string,
+  onUsage?: UsageCallback
 ): Promise<QuestionItem[]> {
   const questionsText = assessment.questions
     .map((q, i) => `Q${i + 1} [${q.marks} marks] (${q.commandWord})\n${q.text}\n\nAnswer: ${q.answer}\n\nMark Scheme: ${q.markScheme}`)
@@ -257,8 +273,9 @@ ASSESSMENT TO AUDIT:
 ${questionsText}`
 
   const parsed = await withRetry(async () => {
-    const raw = await openaiChat([{ role: 'user', content: prompt }], model, apiKey ?? '', buildSystemPrompt(subject))
-    return parseJsonWithRecovery<{ questions: any[] }>(raw, 'OpenAI')
+    const res: any = await openaiChat([{ role: 'user', content: prompt }], model, apiKey ?? '', buildSystemPrompt(subject))
+    if ((res.inputTokens ?? 0) > 0 || (res.outputTokens ?? 0) > 0) onUsage?.(model, res.inputTokens, res.outputTokens)
+    return parseJsonWithRecovery<{ questions: any[] }>(res.text, 'OpenAI')
   })
   return (parsed.questions ?? []).map((q, i) => {
     const sanitized = sanitizeQuestion(q)
@@ -350,8 +367,8 @@ Respond with JSON: { "analysis": "string", "questions": [...] } matching: ${QUES
   userContent.push({ type: 'text', text: prompt + (isPdf ? '\n\n(Note: PDF provided as text context — analyze based on subject)' : '') })
 
   const parsed = await withRetry(async () => {
-    const raw = await openaiChat([{ role: 'user', content: userContent }], model, apiKey ?? '', buildSystemPrompt(subject))
-    return parseJsonWithRecovery<{ analysis?: string; questions?: any[] }>(raw, 'OpenAI')
+    const res: any = await openaiChat([{ role: 'user', content: userContent }], model, apiKey ?? '', buildSystemPrompt(subject))
+    return parseJsonWithRecovery<{ analysis?: string; questions?: any[] }>(res.text, 'OpenAI')
   })
   return {
     analysis: parsed.analysis ?? '',

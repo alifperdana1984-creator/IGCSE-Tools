@@ -8,6 +8,7 @@ import { uploadToGeminiFileApi } from '../lib/gemini'
 import { getSyllabusCache, getPastPaperCache } from '../lib/firebase'
 import { Timestamp } from 'firebase/firestore'
 import { auth } from '../lib/firebase'
+import { estimateCostIDR } from '../lib/pricing'
 
 const GEMINI_URI_VALID_MS = 46 * 60 * 60 * 1000
 
@@ -162,6 +163,7 @@ export function useGeneration(
   const [isAuditing, setIsAuditing] = useState(false)
   const [retryCount, setRetryCount] = useState(0)
   const [error, setError] = useState<AIError | null>(null)
+  const [lastRunCostIDR, setLastRunCostIDR] = useState<number | null>(null)
 
   const generate = useCallback(async (
     config: GenerationConfig,
@@ -171,6 +173,11 @@ export function useGeneration(
     setIsGenerating(true)
     setRetryCount(0)
     setError(null)
+    setLastRunCostIDR(null)
+    let billedCostIDR = 0
+    const addUsageCost = (model: string, inputTokens: number, outputTokens: number) => {
+      billedCostIDR += estimateCostIDR(model, inputTokens, outputTokens)
+    }
     try {
       const references = await buildReferences(
         knowledgeBaseResources, getBase64, provider, apiKey, updateGeminiUri
@@ -183,7 +190,7 @@ export function useGeneration(
       }, (attempt) => {
         setRetryCount(attempt)
         notify(`Rate limit hit, retrying (${attempt}/3)...`, 'info')
-      })
+      }, addUsageCost)
       const draft: Assessment = {
         id: crypto.randomUUID(),
         subject: config.subject,
@@ -201,12 +208,13 @@ export function useGeneration(
         notify('Auditing assessment quality...', 'info')
         await new Promise(r => setTimeout(r, 3000))
         try {
-          auditedQuestions = await auditTest(config.subject, draft, auditModel, config.provider, apiKey)
+          auditedQuestions = await auditTest(config.subject, draft, auditModel, config.provider, apiKey, addUsageCost)
         } catch {
           // Non-fatal: use unaudited questions if audit fails
         }
       }
       setGeneratedAssessment({ ...draft, questions: auditedQuestions })
+      if (billedCostIDR > 0) setLastRunCostIDR(Math.round(billedCostIDR))
       notify('Assessment generated successfully!', 'success')
     } catch (e: any) {
       const ae = e as AIError
@@ -295,5 +303,6 @@ export function useGeneration(
     generate,
     analyzeFile,
     getStudentFeedback,
+    lastRunCostIDR,
   }
 }

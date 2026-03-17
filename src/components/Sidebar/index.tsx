@@ -23,6 +23,7 @@ interface Props {
   isGenerating: boolean
   isAuditing: boolean
   retryCount: number
+  lastRunCostIDR?: number | null
   resources: Resource[]
   knowledgeBase: Resource[]
   onUploadResource: (file: File, subject: string, resourceType?: ResourceType) => void
@@ -69,6 +70,7 @@ const RESOURCE_TYPE_COLORS: Record<ResourceType, string> = {
 
 export function Sidebar({
   config, onConfigChange, onGenerate, isGenerating, isAuditing, retryCount,
+  lastRunCostIDR,
   resources, knowledgeBase, onUploadResource, onAddToKB, onRemoveFromKB, onDeleteResource, onUpdateResourceType,
   onToggleShared, currentUserId, uploading, processingIds,
   studentMode, onStudentModeToggle, syllabusContext, onSyllabusContextChange,
@@ -279,6 +281,11 @@ export function Sidebar({
           {!MODEL_PRICING_HAS(effectiveModel) && <span className="text-stone-400"> (estimate)</span>}
           {provider === 'gemini' && <span className="text-stone-400"> (gen + audit)</span>}
           {config.difficulty === 'Challenging' && <span className="text-stone-400"> (+ critique)</span>}
+          {lastRunCostIDR && (
+            <span className="block mt-0.5 text-emerald-700">
+              Last actual run: Rp {lastRunCostIDR.toLocaleString('id-ID')}
+            </span>
+          )}
         </div>
 
         {/* Student mode */}

@@ -1,6 +1,7 @@
 import { GoogleGenAI, Type } from "@google/genai";
 import type { QuestionItem, Assessment, AnalyzeFileResult, GenerationConfig, GeminiError } from './types'
 import type { Reference } from './ai'
+import type { UsageCallback } from './ai'
 import { sanitizeQuestion, generateQuestionCode as sharedGenerateQuestionCode } from './sanitize'
 import { parseJsonWithRecovery } from './json'
 
@@ -346,7 +347,8 @@ function buildReferenceParts(references: Reference[], difficulty?: string): any[
 
 export async function generateTest(
   config: GenerationConfig & { references?: Reference[]; apiKey?: string },
-  onRetry?: (attempt: number) => void
+  onRetry?: (attempt: number) => void,
+  onUsage?: UsageCallback
 ): Promise<QuestionItem[]> {
   const ai = getAI(config.apiKey)
   const subjectRules = SUBJECT_SPECIFIC_RULES[config.subject] ?? ''
@@ -451,6 +453,8 @@ SVG DIAGRAMS:
 - Include only what is needed to answer the question — no decorative elements.`,
     },
     })
+    const usage = getGeminiUsage(response)
+    if (usage) onUsage?.(config.model || "gemini-3-flash-preview", usage.inputTokens, usage.outputTokens)
     return safeJsonParse(response.text || '{}') as { questions: Omit<QuestionItem, 'id'>[] }
   }, 3, onRetry)
   let questions: QuestionItem[] = (raw.questions ?? []).map(q => {
@@ -466,7 +470,7 @@ SVG DIAGRAMS:
   })
 
   if (config.difficulty === 'Challenging' && questions.length > 0) {
-    questions = await critiqueForDifficulty(questions, config.subject, config.model || 'gemini-3-flash-preview', ai, onRetry)
+    questions = await critiqueForDifficulty(questions, config.subject, config.model || 'gemini-3-flash-preview', ai, onRetry, onUsage)
   }
 
   return questions
@@ -478,6 +482,7 @@ async function critiqueForDifficulty(
   model: string,
   ai: ReturnType<typeof getAI>,
   onRetry?: (attempt: number) => void,
+  onUsage?: UsageCallback,
 ): Promise<QuestionItem[]> {
   const questionsText = questions
     .map((q, i) => `Q${i + 1} [${q.marks} marks] (${q.commandWord})\n${q.text}\n\nAnswer: ${q.answer}\n\nMark Scheme: ${q.markScheme}`)
@@ -541,6 +546,8 @@ TASK:
       systemInstruction: `You are a Senior Cambridge IGCSE Chief Examiner. Your only job is to ensure questions discriminate between A and A* candidates. Be ruthless: any question a student could answer from memory or with a single step of reasoning must be rewritten. Unfamiliar contexts, multi-stage synthesis, and higher-order command words are non-negotiable.`,
     },
     })
+    const usage = getGeminiUsage(response)
+    if (usage) onUsage?.(model, usage.inputTokens, usage.outputTokens)
     return safeJsonParse(response.text || '{}') as { questions: any[] }
   }, 3, onRetry)
   return (raw.questions ?? []).map((q, i) => {
@@ -561,7 +568,8 @@ export async function auditTest(
   subject: string,
   assessment: Assessment,
   model: string = 'gemini-3.1-pro-preview',
-  apiKey?: string
+  apiKey?: string,
+  onUsage?: UsageCallback
 ): Promise<QuestionItem[]> {
   const ai = getAI(apiKey)
   const questionsText = assessment.questions
@@ -622,6 +630,8 @@ Return the ENTIRE assessment with ALL questions (corrected or unchanged).`
       },
     },
     })
+    const usage = getGeminiUsage(response)
+    if (usage) onUsage?.(model, usage.inputTokens, usage.outputTokens)
     return safeJsonParse(response.text || '{}') as { questions: Omit<QuestionItem, 'id'>[] }
   })
   return (raw.questions ?? []).map((q, i) => {
@@ -689,6 +699,26 @@ export async function getStudentFeedback(
 
 function safeJsonParse(text: string) {
   return parseJsonWithRecovery(text || '{}', 'Gemini')
+}
+
+function getGeminiUsage(response: any): { inputTokens: number; outputTokens: number } | null {
+  const meta = response?.usageMetadata ?? response?.usage ?? null
+  if (!meta) return null
+  const inputTokens = Number(
+    meta.promptTokenCount
+    ?? meta.inputTokens
+    ?? meta.prompt_tokens
+    ?? 0
+  )
+  const outputTokens = Number(
+    meta.candidatesTokenCount
+    ?? meta.outputTokens
+    ?? meta.completion_tokens
+    ?? 0
+  )
+  if (!Number.isFinite(inputTokens) || !Number.isFinite(outputTokens)) return null
+  if (inputTokens <= 0 && outputTokens <= 0) return null
+  return { inputTokens, outputTokens }
 }
 
 export async function analyzeFile(

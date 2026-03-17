@@ -40,11 +40,17 @@ type WithExtra = GenerationConfig & {
   apiKey?: string
 }
 
-export async function generateTest(config: WithExtra, onRetry?: (attempt: number) => void): Promise<QuestionItem[]> {
+export type UsageCallback = (model: string, inputTokens: number, outputTokens: number) => void
+
+export async function generateTest(
+  config: WithExtra,
+  onRetry?: (attempt: number) => void,
+  onUsage?: UsageCallback
+): Promise<QuestionItem[]> {
   switch (config.provider) {
-    case 'openai': return openaiGenerateTest(config, onRetry)
-    case 'anthropic': return anthropicGenerateTest(config, onRetry)
-    default: return geminiGenerateTest(config, onRetry)
+    case 'openai': return openaiGenerateTest(config, onRetry, onUsage)
+    case 'anthropic': return anthropicGenerateTest(config, onRetry, onUsage)
+    default: return geminiGenerateTest(config, onRetry, onUsage)
   }
 }
 
@@ -53,12 +59,13 @@ export async function auditTest(
   assessment: Assessment,
   model: string,
   provider: GenerationConfig['provider'],
-  apiKey?: string
+  apiKey?: string,
+  onUsage?: UsageCallback
 ): Promise<QuestionItem[]> {
   switch (provider) {
-    case 'openai': return openaiAuditTest(subject, assessment, model, apiKey)
-    case 'anthropic': return anthropicAuditTest(subject, assessment, model, apiKey)
-    default: return geminiAuditTest(subject, assessment, model, apiKey)
+    case 'openai': return openaiAuditTest(subject, assessment, model, apiKey, onUsage)
+    case 'anthropic': return anthropicAuditTest(subject, assessment, model, apiKey, onUsage)
+    default: return geminiAuditTest(subject, assessment, model, apiKey, onUsage)
   }
 }
 
