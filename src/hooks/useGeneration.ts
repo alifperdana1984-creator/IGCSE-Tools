@@ -1,9 +1,8 @@
 import { useState, useCallback } from 'react'
 import type { Assessment, QuestionItem, AnalyzeFileResult, GenerationConfig, AIError, Resource } from '../lib/types'
 import type { AIProvider } from '../lib/providers'
-import { DEFAULT_AUDIT_MODELS } from '../lib/providers'
 import type { NotifyFn } from './useNotifications'
-import { generateTest, auditTest, getStudentFeedback as aiFeedback, analyzeFile as aiAnalyze } from '../lib/ai'
+import { generateTest, getStudentFeedback as aiFeedback, analyzeFile as aiAnalyze } from '../lib/ai'
 import { uploadToGeminiFileApi } from '../lib/gemini'
 import { getSyllabusCache, getPastPaperCache } from '../lib/firebase'
 import { Timestamp } from 'firebase/firestore'
@@ -160,7 +159,6 @@ export function useGeneration(
   const [generatedAssessment, setGeneratedAssessment] = useState<Assessment | null>(null)
   const [analysisText, setAnalysisText] = useState<string | null>(null)
   const [isGenerating, setIsGenerating] = useState(false)
-  const [isAuditing, setIsAuditing] = useState(false)
   const [retryCount, setRetryCount] = useState(0)
   const [error, setError] = useState<AIError | null>(null)
   const [lastRunCostIDR, setLastRunCostIDR] = useState<number | null>(null)
@@ -202,6 +200,7 @@ export function useGeneration(
         notify(`Rate limit hit, retrying (${attempt}/3)...`, 'info')
       }, addUsageCost)
       addLog(`Processing ${questions.length} question${questions.length !== 1 ? 's' : ''}…`)
+      addLog('Finalising assessment…')
       const draft: Assessment = {
         id: crypto.randomUUID(),
         subject: config.subject,
@@ -211,24 +210,7 @@ export function useGeneration(
         userId: auth.currentUser?.uid ?? '',
         createdAt: Timestamp.now(),
       }
-      let auditedQuestions = questions
-      // Audit only for Gemini — OpenAI/Anthropic hit rate limits with extra calls
-      if (config.provider === 'gemini') {
-        setIsAuditing(true)
-        addLog('Auditing quality against Cambridge IGCSE standards…')
-        const auditModel = DEFAULT_AUDIT_MODELS['gemini']
-        notify('Auditing assessment quality...', 'info')
-        await new Promise(r => setTimeout(r, 3000))
-        try {
-          auditedQuestions = await auditTest(config.subject, draft, auditModel, config.provider, apiKey, addUsageCost)
-          addLog('Quality audit complete — finalising assessment…')
-        } catch {
-          // Non-fatal: use unaudited questions if audit fails
-        }
-      } else {
-        addLog('Finalising assessment…')
-      }
-      setGeneratedAssessment({ ...draft, questions: auditedQuestions })
+      setGeneratedAssessment(draft)
       if (billedCostIDR > 0) setLastRunCostIDR(Math.round(billedCostIDR))
       notify('Assessment generated successfully!', 'success')
     } catch (e: any) {
@@ -237,7 +219,6 @@ export function useGeneration(
       notify(ae.message ?? 'Failed to generate assessment', 'error')
     } finally {
       setIsGenerating(false)
-      setIsAuditing(false)
     }
   }, [notify, provider, apiKey])
 
@@ -311,7 +292,6 @@ export function useGeneration(
     setGeneratedAssessment,
     analysisText,
     isGenerating,
-    isAuditing,
     retryCount,
     error,
     setError,

@@ -418,7 +418,7 @@ export default function App() {
         }))}
         onGenerate={handleGenerate}
         isGenerating={generation.isGenerating}
-        isAuditing={generation.isAuditing}
+        isAuditing={false}
         retryCount={generation.retryCount}
         lastRunCostIDR={generation.lastRunCostIDR}
         resources={resources.resources}

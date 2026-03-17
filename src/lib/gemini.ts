@@ -364,17 +364,10 @@ function buildReferenceParts(references: Reference[], difficulty?: string): any[
   return parts
 }
 
-/** Gemini responseSchema fragment for the structured diagram field */
-const VERTEX_SCHEMA = {
-  type: Type.OBJECT,
-  properties: {
-    x: { type: Type.NUMBER },
-    y: { type: Type.NUMBER },
-    label: { type: Type.STRING, nullable: true },
-  },
-  required: ['x', 'y'],
-}
-
+/** Gemini responseSchema fragment for the structured diagram field.
+ *  Kept intentionally flat/simple — deeply nested item schemas cause Gemini
+ *  structured-output failures. Array items are declared as generic objects
+ *  so the model can fill them freely; sanitize.ts validates/normalises at runtime. */
 const DIAGRAM_SCHEMA = {
   type: Type.OBJECT,
   nullable: true,
@@ -386,103 +379,25 @@ const DIAGRAM_SCHEMA = {
     yMin: { type: Type.NUMBER, nullable: true },
     yMax: { type: Type.NUMBER, nullable: true },
     gridStep: { type: Type.NUMBER, nullable: true },
-    points: {
-      type: Type.ARRAY, nullable: true,
-      items: {
-        type: Type.OBJECT,
-        properties: { label: { type: Type.STRING }, x: { type: Type.NUMBER }, y: { type: Type.NUMBER }, color: { type: Type.STRING, nullable: true } },
-        required: ['label', 'x', 'y'],
-      },
-    },
-    segments: {
-      type: Type.ARRAY, nullable: true,
-      items: {
-        type: Type.OBJECT,
-        properties: { x1: { type: Type.NUMBER }, y1: { type: Type.NUMBER }, x2: { type: Type.NUMBER }, y2: { type: Type.NUMBER }, label: { type: Type.STRING, nullable: true }, dashed: { type: Type.BOOLEAN, nullable: true } },
-        required: ['x1', 'y1', 'x2', 'y2'],
-      },
-    },
-    polygons: {
-      type: Type.ARRAY, nullable: true,
-      items: {
-        type: Type.OBJECT,
-        properties: { fill: { type: Type.STRING, nullable: true }, vertices: { type: Type.ARRAY, items: VERTEX_SCHEMA } },
-        required: ['vertices'],
-      },
-    },
     // geometric_shape
     viewWidth: { type: Type.NUMBER, nullable: true },
     viewHeight: { type: Type.NUMBER, nullable: true },
-    shapes: {
-      type: Type.ARRAY, nullable: true,
-      items: {
-        type: Type.OBJECT,
-        properties: {
-          kind: { type: Type.STRING },
-          vertices: { type: Type.ARRAY, nullable: true, items: VERTEX_SCHEMA },
-          sides: {
-            type: Type.ARRAY, nullable: true,
-            items: {
-              type: Type.OBJECT,
-              properties: { label: { type: Type.STRING }, fromVertex: { type: Type.NUMBER }, toVertex: { type: Type.NUMBER } },
-              required: ['label', 'fromVertex', 'toVertex'],
-            },
-          },
-          rightAngleAt: { type: Type.NUMBER, nullable: true },
-          x: { type: Type.NUMBER, nullable: true },
-          y: { type: Type.NUMBER, nullable: true },
-          width: { type: Type.NUMBER, nullable: true },
-          height: { type: Type.NUMBER, nullable: true },
-          cx: { type: Type.NUMBER, nullable: true },
-          cy: { type: Type.NUMBER, nullable: true },
-          radius: { type: Type.NUMBER, nullable: true },
-          fill: { type: Type.STRING, nullable: true },
-          stroke: { type: Type.STRING, nullable: true },
-          labels: {
-            type: Type.ARRAY, nullable: true,
-            items: {
-              type: Type.OBJECT,
-              properties: { text: { type: Type.STRING }, x: { type: Type.NUMBER }, y: { type: Type.NUMBER } },
-              required: ['text', 'x', 'y'],
-            },
-          },
-        },
-        required: ['kind'],
-      },
-    },
     // number_line
     min: { type: Type.NUMBER, nullable: true },
     max: { type: Type.NUMBER, nullable: true },
     step: { type: Type.NUMBER, nullable: true },
-    nlPoints: {
-      type: Type.ARRAY, nullable: true,
-      items: {
-        type: Type.OBJECT,
-        properties: { value: { type: Type.NUMBER }, label: { type: Type.STRING, nullable: true }, open: { type: Type.BOOLEAN, nullable: true } },
-        required: ['value'],
-      },
-    },
-    ranges: {
-      type: Type.ARRAY, nullable: true,
-      items: {
-        type: Type.OBJECT,
-        properties: { from: { type: Type.NUMBER }, to: { type: Type.NUMBER }, fromOpen: { type: Type.BOOLEAN, nullable: true }, toOpen: { type: Type.BOOLEAN, nullable: true } },
-        required: ['from', 'to'],
-      },
-    },
-    // bar_chart
+    // bar_chart (title/xLabel/yLabel also used for other types)
     title: { type: Type.STRING, nullable: true },
     xLabel: { type: Type.STRING, nullable: true },
     yLabel: { type: Type.STRING, nullable: true },
-    bars: {
-      type: Type.ARRAY, nullable: true,
-      items: {
-        type: Type.OBJECT,
-        properties: { label: { type: Type.STRING }, value: { type: Type.NUMBER } },
-        required: ['label', 'value'],
-      },
-    },
-    // yMax is shared with cartesian_grid (already declared above)
+    // All array fields: untyped items to avoid schema complexity
+    points:   { type: Type.ARRAY, nullable: true, items: { type: Type.OBJECT } },
+    segments: { type: Type.ARRAY, nullable: true, items: { type: Type.OBJECT } },
+    polygons: { type: Type.ARRAY, nullable: true, items: { type: Type.OBJECT } },
+    shapes:   { type: Type.ARRAY, nullable: true, items: { type: Type.OBJECT } },
+    nlPoints: { type: Type.ARRAY, nullable: true, items: { type: Type.OBJECT } },
+    ranges:   { type: Type.ARRAY, nullable: true, items: { type: Type.OBJECT } },
+    bars:     { type: Type.ARRAY, nullable: true, items: { type: Type.OBJECT } },
   },
   required: ['diagramType'],
 }
