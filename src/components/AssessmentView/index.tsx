@@ -15,6 +15,8 @@ interface Props {
   analysisText?: string | null
   isEditing: boolean
   studentMode: boolean
+  isGenerating?: boolean
+  generationLog?: string[]
   onEdit: () => void
   onCancelEdit: () => void
   onSave: () => void
@@ -136,6 +138,7 @@ function formatDateTime(ts: import('firebase/firestore').Timestamp): string {
 
 export function AssessmentView({
   assessment, analysisText, isEditing, studentMode,
+  isGenerating, generationLog,
   onEdit, onCancelEdit, onSave, onSaveToLibrary, onStudentFeedback, onCopy,
   activeTab, onTabChange,
   onRemoveQuestion, onMoveQuestion, bankQuestions, onAddQuestions, onUpdateQuestion,
@@ -152,6 +155,39 @@ export function AssessmentView({
   const [isFeedbackLoading, setIsFeedbackLoading] = useState(false)
 
   if (!assessment) {
+    if (isGenerating && generationLog) {
+      return (
+        <div className="flex-1 flex items-center justify-center p-8">
+          <div className="w-full max-w-md">
+            <div className="flex items-center gap-3 mb-8">
+              <Loader2 className="w-5 h-5 text-emerald-500 animate-spin shrink-0" />
+              <span className="text-sm font-semibold text-stone-700">Generating assessment…</span>
+            </div>
+            <div className="flex flex-col gap-3">
+              {generationLog.map((step, i) => {
+                const isCurrent = i === generationLog.length - 1
+                return (
+                  <div
+                    key={i}
+                    className="generation-step flex items-start gap-3"
+                  >
+                    <div className="mt-0.5 shrink-0">
+                      {isCurrent
+                        ? <Loader2 className="w-4 h-4 text-emerald-500 animate-spin" />
+                        : <Check className="w-4 h-4 text-emerald-500" />
+                      }
+                    </div>
+                    <span className={`text-sm leading-snug ${isCurrent ? 'text-stone-800 font-medium' : 'text-stone-400'}`}>
+                      {step}
+                    </span>
+                  </div>
+                )
+              })}
+            </div>
+          </div>
+        </div>
+      )
+    }
     return (
       <div className="flex-1 flex items-center justify-center text-stone-400">
         <div className="text-center">

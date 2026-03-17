@@ -563,6 +563,8 @@ export default function App() {
             analysisText={generation.analysisText}
             isEditing={isEditing}
             studentMode={studentMode}
+            isGenerating={generation.isGenerating}
+            generationLog={generation.generationLog}
             onEdit={() => setIsEditing(true)}
             onCancelEdit={() => setIsEditing(false)}
             onSaveToLibrary={handleSave}

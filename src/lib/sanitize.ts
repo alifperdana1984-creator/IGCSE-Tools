@@ -34,7 +34,8 @@ export function sanitizeQuestion(q: any): Omit<QuestionItem, 'id'> {
 
   let text = stripNum(q.text ?? '')
   const type = normalizeQuestionType(q.type)
-  const optionsFromModel = Array.isArray(q.options) ? q.options.slice(0, 4).map((x: unknown) => String(x ?? '').trim()).filter(Boolean) : []
+  const stripOptionPrefix = (s: string) => s.replace(/^\s*\(?[A-D]\)?[).:\-]\s+/i, '').trim()
+  const optionsFromModel = Array.isArray(q.options) ? q.options.slice(0, 4).map((x: unknown) => stripOptionPrefix(String(x ?? '').trim())).filter(Boolean) : []
   const extractedOptions = extractMcqOptionsFromText(text)
   const options = type === 'mcq'
     ? (optionsFromModel.length === 4 ? optionsFromModel : extractedOptions)

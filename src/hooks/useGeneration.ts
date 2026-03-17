@@ -164,6 +164,7 @@ export function useGeneration(
   const [retryCount, setRetryCount] = useState(0)
   const [error, setError] = useState<AIError | null>(null)
   const [lastRunCostIDR, setLastRunCostIDR] = useState<number | null>(null)
+  const [generationLog, setGenerationLog] = useState<string[]>([])
 
   const generate = useCallback(async (
     config: GenerationConfig,
@@ -174,14 +175,22 @@ export function useGeneration(
     setRetryCount(0)
     setError(null)
     setLastRunCostIDR(null)
+    setGenerationLog([])
+    const addLog = (msg: string) => setGenerationLog(prev => [...prev, msg])
     let billedCostIDR = 0
     const addUsageCost = (model: string, inputTokens: number, outputTokens: number) => {
       billedCostIDR += estimateCostIDR(model, inputTokens, outputTokens)
     }
     try {
+      const refCount = knowledgeBaseResources.length
+      addLog(refCount > 0
+        ? `Loading ${refCount} reference${refCount > 1 ? 's' : ''} (${knowledgeBaseResources.map(r => r.name).join(', ')})…`
+        : 'Preparing generation request…'
+      )
       const references = await buildReferences(
         knowledgeBaseResources, getBase64, provider, apiKey, updateGeminiUri
       )
+      addLog(`Sending request to ${provider === 'gemini' ? 'Gemini' : provider === 'openai' ? 'OpenAI' : 'Anthropic'} AI (${config.count} questions, ${config.difficulty} difficulty)…`)
       const questions = await generateTest({
         ...config,
         type: normalizeGenerationQuestionType(config.type),
@@ -189,8 +198,10 @@ export function useGeneration(
         apiKey,
       }, (attempt) => {
         setRetryCount(attempt)
+        addLog(`Rate limit hit — retrying (${attempt}/3)…`)
         notify(`Rate limit hit, retrying (${attempt}/3)...`, 'info')
       }, addUsageCost)
+      addLog(`Processing ${questions.length} question${questions.length !== 1 ? 's' : ''}…`)
       const draft: Assessment = {
         id: crypto.randomUUID(),
         subject: config.subject,
@@ -204,14 +215,18 @@ export function useGeneration(
       // Audit only for Gemini — OpenAI/Anthropic hit rate limits with extra calls
       if (config.provider === 'gemini') {
         setIsAuditing(true)
+        addLog('Auditing quality against Cambridge IGCSE standards…')
         const auditModel = DEFAULT_AUDIT_MODELS['gemini']
         notify('Auditing assessment quality...', 'info')
         await new Promise(r => setTimeout(r, 3000))
         try {
           auditedQuestions = await auditTest(config.subject, draft, auditModel, config.provider, apiKey, addUsageCost)
+          addLog('Quality audit complete — finalising assessment…')
         } catch {
           // Non-fatal: use unaudited questions if audit fails
         }
+      } else {
+        addLog('Finalising assessment…')
       }
       setGeneratedAssessment({ ...draft, questions: auditedQuestions })
       if (billedCostIDR > 0) setLastRunCostIDR(Math.round(billedCostIDR))
@@ -304,5 +319,6 @@ export function useGeneration(
     analyzeFile,
     getStudentFeedback,
     lastRunCostIDR,
+    generationLog,
   }
 }

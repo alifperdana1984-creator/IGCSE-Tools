@@ -27,6 +27,14 @@ body {
   @apply text-emerald-900;
 }
 
+@keyframes stepSlideIn {
+  from { opacity: 0; transform: translateY(10px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.generation-step {
+  animation: stepSlideIn 0.35s ease-out both;
+}
+
 .markdown-body.markdown-emerald h1,
 .markdown-body.markdown-emerald h2,
 .markdown-body.markdown-emerald h3,
