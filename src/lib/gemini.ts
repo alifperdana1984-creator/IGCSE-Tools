@@ -543,11 +543,13 @@ GENERATION RULES:
 10. marks: integer. Structured questions: sum of all sub-part marks. MCQ: always 1. Short answer: 1–3.
 
 11. SUB-TOPIC DIVERSITY (strictly enforce): Each question in the set MUST test a DIFFERENT sub-topic or skill.
-    - Never generate two questions that assess the same concept, formula, or skill.
-    - Spread coverage across distinct areas of the topic as broadly as possible.
+    - BEFORE writing each question, list the sub-topics already used. NEVER repeat one.
+    - "Different numbers, same method" is NOT diversity — it is a violation.
+    - Spread coverage across the widest possible range of distinct skills within the topic.
     - If topic is "Mixed Topics", draw from at least 3 different major topic areas.
-    - Wrong: Q1=linear equations, Q2=linear equations (FORBIDDEN — same sub-topic twice)
-    - Right: Q1=linear equations, Q2=quadratic formula, Q3=simultaneous equations, Q4=inequalities`
+    - Wrong: Q1=calculate gradient, Q2=calculate gradient with different points (FORBIDDEN)
+    - Wrong: Q1=find midpoint, Q2=find midpoint of different segment (FORBIDDEN)
+    - Right: Q1=plot coordinates, Q2=calculate gradient, Q3=find midpoint, Q4=find line equation`
 
   const parts: any[] = config.references && config.references.length > 0
     ? buildReferenceParts(config.references, config.difficulty)
@@ -617,7 +619,15 @@ DIAGRAMS (MANDATORY RULES):
     })
     const usage = getGeminiUsage(response)
     if (usage) onUsage?.(config.model || "gemini-3-flash-preview", usage.inputTokens, usage.outputTokens)
-    return safeJsonParse(response.text || '{}') as { questions: Omit<QuestionItem, 'id'>[] }
+    const parsed = safeJsonParse(response.text || '{}') as { questions: Omit<QuestionItem, 'id'>[] }
+    if (!parsed.questions || parsed.questions.length < config.count) {
+      throw {
+        type: 'invalid_response',
+        retryable: true,
+        message: `Model returned ${parsed.questions?.length ?? 0} questions, expected ${config.count}. Retrying…`,
+      }
+    }
+    return parsed
   }, 3, onRetry)
   let questions: QuestionItem[] = (raw.questions ?? []).map(q => {
     const sanitized = sanitizeQuestion(q)
@@ -635,8 +645,10 @@ DIAGRAMS (MANDATORY RULES):
     questions = await critiqueForDifficulty(questions, config.subject, config.model || 'gemini-3-flash-preview', ai, onRetry, onUsage)
   }
 
-  // Phase 2: generate diagrams for questions that need one but didn't get one
-  const needsDiagram = questions.filter(q => q.hasDiagram && !q.diagram)
+  // Phase 2: generate diagrams for questions that need one but didn't get one.
+  // Use diagramMissing (not hasDiagram) because sanitizeQuestion sets hasDiagram=false
+  // when diagramMissing=true, so filtering on hasDiagram would skip all amber-warning questions.
+  const needsDiagram = questions.filter(q => q.diagramMissing && !q.diagram)
   if (needsDiagram.length > 0) {
     onLog?.(`Generating diagrams for ${needsDiagram.length} question${needsDiagram.length !== 1 ? 's' : ''}…`)
     const diagrams = await Promise.all(
