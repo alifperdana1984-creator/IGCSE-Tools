@@ -152,7 +152,7 @@ ${subjectRules ? `${subjectRules}\n` : ''}${MARK_SCHEME_FORMAT}
 GENERATION RULES:
 1. Generate EXACTLY ${config.count} questions.
 2. STRUCTURED QUESTIONS (type="structured", 4+ marks): Must use multi-part format with a shared context paragraph, then **(a)**, **(b)**, **(c)** sub-questions each with mark allocation **[n]**.
-3. MCQ QUESTIONS (type="mcq"): Exactly 4 options in the "options" array. "answer" = only "A", "B", "C", or "D". All distractors must be plausible misconceptions.
+3. MCQ QUESTIONS (type="mcq"): Exactly 4 options in the "options" array (no letter prefix). "answer" = only "A", "B", "C", or "D". All distractors must be plausible misconceptions. IMPORTANT: any math in an option MUST be in $...$, e.g. "$2x^2 + 7x$", "$120^{\\circ}$".
 4. SHORT ANSWER (type="short_answer"): 1–3 marks, direct recall or simple application.
 5. LaTeX: ALL mathematical/chemical expressions MUST use LaTeX delimiters: $x^2$, $\\frac{a}{b}$, $H_2O$.
 6. syllabusObjective: "REF – statement" format. Do NOT add it as a line in question text.

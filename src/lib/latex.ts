@@ -1,4 +1,4 @@
-const BARE_LATEX_RE = /(\\(?:frac|sqrt|sum|int|prod|lim|infty|partial|Delta|alpha|beta|gamma|delta|epsilon|theta|lambda|mu|pi|sigma|phi|omega|times|div|pm|leq|geq|neq|approx|cdot|ldots|vec|hat|bar|overline|underline|left|right|mathbf|mathrm|text)\b(?:\{[^}]*\})*(?:\{[^}]*\})*)/g
+const BARE_LATEX_RE = /(\\(?:frac|sqrt|sum|int|prod|lim|infty|partial|Delta|alpha|beta|gamma|delta|epsilon|zeta|eta|theta|iota|kappa|lambda|mu|nu|xi|pi|rho|sigma|tau|upsilon|phi|chi|psi|omega|Gamma|Lambda|Sigma|Phi|Omega|times|div|pm|mp|leq|geq|neq|approx|equiv|sim|cong|cdot|ldots|dots|circ|degree|angle|triangle|perp|parallel|propto|nabla|therefore|because|vec|hat|bar|tilde|overline|underline|left|right|mathbf|mathrm|mathit|text|sqrt)\b(?:\{[^}]*\})*(?:\{[^}]*\})*)/g
 
 /**
  * Fixes AI LaTeX output before passing to KaTeX:
@@ -19,12 +19,25 @@ export function preprocessLatex(text: string): string {
   // Step 1: merge accidentally split adjacent math blocks
   result = result.replace(/\$([^$\n]+?)\$\$([^$\n]+?)\$/g, (_m, a, b) => `$${a}${b}$`)
 
-  // Step 2: split by existing $...$ blocks, wrap bare \commands only in plain segments
+  // Step 2: split by existing $...$ blocks; in each plain segment:
+  //   2a) wrap power-expressions (e.g. x^2, 2x^2+7x, 108^{\circ}) FIRST
+  //   2b) then wrap remaining bare \commands with BARE_LATEX_RE
+  // Running 2a before 2b avoids BARE_LATEX_RE grabbing \circ out of 108^{\circ}
+  const POWER_RE = /\b([a-zA-Z0-9]+(?:\^(?:\{[^}]*\}|[a-zA-Z0-9]+))(?:[a-zA-Z0-9]*)?(?:\s*[+\-]\s*[0-9]*[a-zA-Z]*(?:\^(?:\{[^}]*\}|[a-zA-Z0-9]+))?[a-zA-Z0-9]*)*)/g
+
   const segments = result.split(/(\$[^$\n]+?\$)/g)
   result = segments.map((seg, i) => {
-    // Odd indices are already-wrapped math blocks — leave untouched
-    if (i % 2 === 1) return seg
-    return seg.replace(BARE_LATEX_RE, (match) => `$${match}$`)
+    if (i % 2 === 1) return seg  // already inside $...$
+
+    // 2a: wrap power expressions
+    const afterPowers = seg.replace(POWER_RE, (match) => `$${match}$`)
+
+    // 2b: re-split so newly created $...$ blocks are protected, then apply BARE_LATEX_RE
+    const subSegs = afterPowers.split(/(\$[^$\n]+?\$)/g)
+    return subSegs.map((ss, j) => {
+      if (j % 2 === 1) return ss
+      return ss.replace(BARE_LATEX_RE, (match) => `$${match}$`)
+    }).join('')
   }).join('')
 
   return result

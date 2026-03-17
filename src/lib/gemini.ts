@@ -373,7 +373,7 @@ GENERATION RULES:
    - Total marks = sum of all sub-part marks.
    - Each sub-part uses a different command word targeting different cognitive levels.
 
-3. MCQ QUESTIONS (type="mcq"): Provide exactly 4 answer choices in the "options" array (plain text, no letter prefix). The "answer" field must be ONLY the letter "A", "B", "C", or "D". All four distractors must be plausible — each representing a common misconception. If 4 truly distinct distractor options cannot be written, use short_answer instead. For non-MCQ questions, "options" must be an empty array [].
+3. MCQ QUESTIONS (type="mcq"): Provide exactly 4 answer choices in the "options" array (no letter prefix). The "answer" field must be ONLY the letter "A", "B", "C", or "D". All four distractors must be plausible — each representing a common misconception. If 4 truly distinct distractor options cannot be written, use short_answer instead. For non-MCQ questions, "options" must be an empty array []. IMPORTANT: any mathematical expression in an option (variables, exponents, fractions, units, symbols) MUST be wrapped in $...$, e.g. "$2x^2 + 7x$" not "2x^2 + 7x", "$120^{\circ}$" not "120°".
 
 4. SHORT ANSWER (type="short_answer"): 1–3 marks. Direct recall or simple application. No sub-parts needed.
 
