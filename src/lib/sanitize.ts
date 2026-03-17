@@ -183,16 +183,18 @@ export function sanitizeQuestion(q: any): Omit<QuestionItem, 'id'> {
   const normalizedText = normalizeSvgMarkdown(text)
   const rawDiagram = normalizeDiagram(q.diagram)
 
-  // Auto-generate a cartesian_grid when the model didn't provide one
+  // Auto-generate a cartesian_grid when the model didn't provide one.
+  // Text-based extraction takes priority: it uses the actual named points (P, Q, A, B)
+  // from the question, which is more accurate than inferring from MCQ option values.
   const diagram = rawDiagram ?? (() => {
-    // 1. All MCQ options are coordinate pairs → plot the correct answer point
-    if (type === 'mcq' && options.length >= 2) {
-      const fromOpts = tryAutoCartesianDiagram(fix(q.answer ?? ''), options)
-      if (fromOpts) return fromOpts
-    }
-    // 2. Question text contains labeled coordinate points like A(-1, 4) → plot them
+    // 1. Extract labeled coordinate points from question text, e.g. A(-1,4) or P(-4,1)
     if (q.hasDiagram) {
-      return tryAutoCartesianFromText(normalizedText) ?? undefined
+      const fromText = tryAutoCartesianFromText(normalizedText)
+      if (fromText) return fromText
+    }
+    // 2. Fallback: all MCQ options are coordinate pairs → plot the correct answer as point P
+    if (type === 'mcq' && options.length >= 2) {
+      return tryAutoCartesianDiagram(fix(q.answer ?? ''), options) ?? undefined
     }
     return undefined
   })()
