@@ -6,6 +6,7 @@ import rehypeKatex from 'rehype-katex'
 import { Download, Copy, Save, Edit3, BookmarkPlus, X, Plus, Check, Pencil, ChevronUp, ChevronDown, Calendar, Loader2 } from 'lucide-react'
 import type { Assessment, Question, QuestionItem } from '../../lib/types'
 import { parseSVGSafe, normalizeSvgMarkdown } from '../../lib/svg'
+import { DiagramRenderer } from '../DiagramRenderer'
 import { exportToPDF } from '../../lib/pdf'
 import { preprocessLatex } from '../../lib/latex'
 import { RichEditor } from '../RichEditor'
@@ -419,6 +420,7 @@ export function AssessmentView({
                         <span>Diagram was not generated for this question — it may be unanswerable. Try regenerating.</span>
                       </div>
                     )}
+                    <DiagramRenderer spec={q.diagram} />
                     <QuestionMarkdown content={q.text} />
                     {studentMode && (
                       <textarea

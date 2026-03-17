@@ -1,5 +1,14 @@
-import type { QuestionItem } from './types'
+import type { QuestionItem, DiagramSpec } from './types'
 import { normalizeSvgMarkdown } from './svg'
+
+const KNOWN_DIAGRAM_TYPES = new Set(['cartesian_grid', 'geometric_shape', 'number_line', 'bar_chart'])
+
+function normalizeDiagram(raw: unknown): DiagramSpec | undefined {
+  if (!raw || typeof raw !== 'object') return undefined
+  const d = raw as Record<string, unknown>
+  if (!KNOWN_DIAGRAM_TYPES.has(d.diagramType as string)) return undefined
+  return raw as DiagramSpec
+}
 
 const SUBJECT_CODES: Record<string, string> = {
   Mathematics: 'MAT', Biology: 'BIO', Physics: 'PHY', Chemistry: 'CHM',
@@ -54,12 +63,12 @@ export function sanitizeQuestion(q: any): Omit<QuestionItem, 'id'> {
   const assessmentObjective = (['AO1', 'AO2', 'AO3'] as const).find(ao => aoRaw.includes(ao))
 
   const normalizedText = normalizeSvgMarkdown(text)
+  const diagram = normalizeDiagram(q.diagram)
 
-  // Detect questions that say "in the diagram" but have no SVG — makes them unanswerable.
-  // Strip the diagram reference so it's still readable, and force hasDiagram=false.
+  // Detect questions that say "in the diagram" but have no SVG or structured diagram field.
   const referencesDiagram = /\b(in the diagram|the diagram shows|refer to the diagram|as shown in the diagram|from the diagram)\b/i.test(normalizedText)
   const hasSvg = /```svg/i.test(normalizedText)
-  const diagramMissing = referencesDiagram && !hasSvg
+  const diagramMissing = referencesDiagram && !hasSvg && !diagram
 
   return {
     text: normalizedText,
@@ -70,6 +79,7 @@ export function sanitizeQuestion(q: any): Omit<QuestionItem, 'id'> {
     type,
     hasDiagram: diagramMissing ? false : Boolean(q.hasDiagram),
     ...(diagramMissing ? { diagramMissing: true } : {}),
+    ...(diagram ? { diagram } : {}),
     ...(type === 'mcq' && options.length === 4 ? { options } : {}),
     ...(q.code ? { code: q.code } : {}),
     ...(q.syllabusObjective ? { syllabusObjective: q.syllabusObjective } : {}),

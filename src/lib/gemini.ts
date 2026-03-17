@@ -364,6 +364,129 @@ function buildReferenceParts(references: Reference[], difficulty?: string): any[
   return parts
 }
 
+/** Gemini responseSchema fragment for the structured diagram field */
+const VERTEX_SCHEMA = {
+  type: Type.OBJECT,
+  properties: {
+    x: { type: Type.NUMBER },
+    y: { type: Type.NUMBER },
+    label: { type: Type.STRING, nullable: true },
+  },
+  required: ['x', 'y'],
+}
+
+const DIAGRAM_SCHEMA = {
+  type: Type.OBJECT,
+  nullable: true,
+  properties: {
+    diagramType: { type: Type.STRING },
+    // cartesian_grid
+    xMin: { type: Type.NUMBER, nullable: true },
+    xMax: { type: Type.NUMBER, nullable: true },
+    yMin: { type: Type.NUMBER, nullable: true },
+    yMax: { type: Type.NUMBER, nullable: true },
+    gridStep: { type: Type.NUMBER, nullable: true },
+    points: {
+      type: Type.ARRAY, nullable: true,
+      items: {
+        type: Type.OBJECT,
+        properties: { label: { type: Type.STRING }, x: { type: Type.NUMBER }, y: { type: Type.NUMBER }, color: { type: Type.STRING, nullable: true } },
+        required: ['label', 'x', 'y'],
+      },
+    },
+    segments: {
+      type: Type.ARRAY, nullable: true,
+      items: {
+        type: Type.OBJECT,
+        properties: { x1: { type: Type.NUMBER }, y1: { type: Type.NUMBER }, x2: { type: Type.NUMBER }, y2: { type: Type.NUMBER }, label: { type: Type.STRING, nullable: true }, dashed: { type: Type.BOOLEAN, nullable: true } },
+        required: ['x1', 'y1', 'x2', 'y2'],
+      },
+    },
+    polygons: {
+      type: Type.ARRAY, nullable: true,
+      items: {
+        type: Type.OBJECT,
+        properties: { fill: { type: Type.STRING, nullable: true }, vertices: { type: Type.ARRAY, items: VERTEX_SCHEMA } },
+        required: ['vertices'],
+      },
+    },
+    // geometric_shape
+    viewWidth: { type: Type.NUMBER, nullable: true },
+    viewHeight: { type: Type.NUMBER, nullable: true },
+    shapes: {
+      type: Type.ARRAY, nullable: true,
+      items: {
+        type: Type.OBJECT,
+        properties: {
+          kind: { type: Type.STRING },
+          vertices: { type: Type.ARRAY, nullable: true, items: VERTEX_SCHEMA },
+          sides: {
+            type: Type.ARRAY, nullable: true,
+            items: {
+              type: Type.OBJECT,
+              properties: { label: { type: Type.STRING }, fromVertex: { type: Type.NUMBER }, toVertex: { type: Type.NUMBER } },
+              required: ['label', 'fromVertex', 'toVertex'],
+            },
+          },
+          rightAngleAt: { type: Type.NUMBER, nullable: true },
+          x: { type: Type.NUMBER, nullable: true },
+          y: { type: Type.NUMBER, nullable: true },
+          width: { type: Type.NUMBER, nullable: true },
+          height: { type: Type.NUMBER, nullable: true },
+          cx: { type: Type.NUMBER, nullable: true },
+          cy: { type: Type.NUMBER, nullable: true },
+          radius: { type: Type.NUMBER, nullable: true },
+          fill: { type: Type.STRING, nullable: true },
+          stroke: { type: Type.STRING, nullable: true },
+          labels: {
+            type: Type.ARRAY, nullable: true,
+            items: {
+              type: Type.OBJECT,
+              properties: { text: { type: Type.STRING }, x: { type: Type.NUMBER }, y: { type: Type.NUMBER } },
+              required: ['text', 'x', 'y'],
+            },
+          },
+        },
+        required: ['kind'],
+      },
+    },
+    // number_line
+    min: { type: Type.NUMBER, nullable: true },
+    max: { type: Type.NUMBER, nullable: true },
+    step: { type: Type.NUMBER, nullable: true },
+    nlPoints: {
+      type: Type.ARRAY, nullable: true,
+      items: {
+        type: Type.OBJECT,
+        properties: { value: { type: Type.NUMBER }, label: { type: Type.STRING, nullable: true }, open: { type: Type.BOOLEAN, nullable: true } },
+        required: ['value'],
+      },
+    },
+    ranges: {
+      type: Type.ARRAY, nullable: true,
+      items: {
+        type: Type.OBJECT,
+        properties: { from: { type: Type.NUMBER }, to: { type: Type.NUMBER }, fromOpen: { type: Type.BOOLEAN, nullable: true }, toOpen: { type: Type.BOOLEAN, nullable: true } },
+        required: ['from', 'to'],
+      },
+    },
+    // bar_chart
+    title: { type: Type.STRING, nullable: true },
+    xLabel: { type: Type.STRING, nullable: true },
+    yLabel: { type: Type.STRING, nullable: true },
+    bars: {
+      type: Type.ARRAY, nullable: true,
+      items: {
+        type: Type.OBJECT,
+        properties: { label: { type: Type.STRING }, value: { type: Type.NUMBER } },
+        required: ['label', 'value'],
+      },
+    },
+    // yMax is shared with cartesian_grid (already declared above)
+  },
+  required: ['diagramType'],
+}
+
 export async function generateTest(
   config: GenerationConfig & { references?: Reference[]; apiKey?: string },
   onRetry?: (attempt: number) => void,
@@ -398,7 +521,33 @@ GENERATION RULES:
 
 5. LaTeX: ALL mathematical expressions, variables, equations, and formulas MUST be wrapped in LaTeX delimiters: $x^2$, $\\frac{a}{b}$, $H_2O$. NEVER write math as plain text. For currency amounts (e.g. dollars), write the number only ("1500") or use a word prefix ("USD 1500") — NEVER use bare $ as a currency symbol, as it conflicts with LaTeX delimiters.
 
-6. Diagrams: For questions requiring a diagram, include SVG inside the 'text' field as \`\`\`svg ... \`\`\` using camelCase attributes. Set hasDiagram=true.
+6. Diagrams: If a question requires a visual element, populate the "diagram" JSON field — do NOT embed SVG in the question text. Set hasDiagram=true.
+   The "diagram" field must have a "diagramType" plus its required data:
+
+   • "cartesian_grid" — Cartesian coordinate grid.
+     Required: xMin, xMax, yMin, yMax, gridStep (usually 1 or 2).
+     Optional: points [{label,x,y,color}], segments [{x1,y1,x2,y2,dashed}], polygons [{vertices:[{x,y,label}],fill}].
+     Example: {"diagramType":"cartesian_grid","xMin":-2,"xMax":6,"yMin":-3,"yMax":5,"gridStep":1,"points":[{"label":"P","x":3,"y":2}]}
+
+   • "geometric_shape" — Labelled triangle, rectangle, or circle with dimension annotations.
+     Canvas: 400×300 (default). Place vertices with ~40px margin.
+     Example triangle (right-angled at A): A(60,260), B(340,260), C(60,80)
+     Required in each shape: "kind" ("triangle"/"rectangle"/"circle"/"polygon")
+     - For triangle/polygon: "vertices":[{x,y,label}], "sides":[{label:"8 cm",fromVertex:0,toVertex:1}], "rightAngleAt":0 (vertex index)
+     - For rectangle: x, y, width, height; "sides" for dimension labels; corners are indexed 0=TL,1=TR,2=BR,3=BL
+     - For circle: cx, cy, radius
+     Optional: viewWidth, viewHeight, labels:[{text,x,y}]
+
+   • "number_line" — Number line with marked points or inequality ranges.
+     Required: min, max, step.
+     Optional: nlPoints:[{value,label,open}] (open=true → hollow circle = excluded endpoint), ranges:[{from,to,fromOpen,toOpen}]
+
+   • "bar_chart" — Bar chart for statistics questions.
+     Required: bars:[{label,value}].
+     Optional: title, xLabel, yLabel, yMax.
+
+   NEVER write "In the diagram...", "The diagram shows...", or "as shown below" without providing a diagram field.
+   If none of the four types fits, rewrite the question to not require a diagram (set hasDiagram=false).
 
 7. syllabusObjective: the SPECIFIC Cambridge IGCSE learning objective assessed. Format: "REF – objective statement" (e.g. "C4.1 – Define the term acid in terms of proton donation"). ONE sentence max. Do NOT add this as a line in the question text.
 
@@ -451,6 +600,7 @@ GENERATION RULES:
                 assessmentObjective: { type: Type.STRING, nullable: true },
                 difficultyStars: { type: Type.NUMBER, nullable: true },
                 options: { type: Type.ARRAY, items: { type: Type.STRING } },
+                diagram: DIAGRAM_SCHEMA,
               },
               required: ['text', 'answer', 'markScheme', 'marks', 'commandWord', 'type', 'hasDiagram', 'options'],
             },
@@ -474,13 +624,11 @@ ASSESSMENT OBJECTIVES:
 - AO2 (Application): apply, calculate, interpret data, deduce — typically 2–4 mark questions
 - AO3 (Experimental): plan, evaluate methods, identify variables — typically 2–4 mark questions
 
-SVG DIAGRAMS:
-- Clean "exam paper" style: black lines, white/transparent background, labelled with leader lines.
-- CRITICAL: Use camelCase for all SVG attributes (strokeWidth, fontSize, fontFamily, textAnchor, dominantBaseline).
-- Include only what is needed to answer the question — no decorative elements.
-- SVG TEXT LABELS MUST BE PLAIN TEXT — never use LaTeX inside SVG text/tspan elements.
-  Write "5.2 m" not "$5.2 \text{ m}$", write "60°" not "$60^\circ$", write "AB = 8 cm" not "$AB = 8$ cm".
-  LaTeX cannot render inside SVG — raw strings will appear instead.`,
+DIAGRAMS:
+- Use the structured "diagram" JSON field — never embed raw SVG in question text.
+- Choose the correct diagramType: "cartesian_grid", "geometric_shape", "number_line", or "bar_chart".
+- All text labels in diagram data must be plain text — no LaTeX. Write "5.2 m" not "$5.2 \\text{ m}$", "60°" not "$60^\\circ$".
+- Provide only the data needed to answer the question — no decorative or irrelevant elements.`,
     },
     })
     const usage = getGeminiUsage(response)
@@ -566,6 +714,7 @@ TASK:
                 assessmentObjective: { type: Type.STRING, nullable: true },
                 difficultyStars: { type: Type.NUMBER, nullable: true },
                 options: { type: Type.ARRAY, items: { type: Type.STRING } },
+                diagram: DIAGRAM_SCHEMA,
               },
               required: ['text', 'answer', 'markScheme', 'marks', 'commandWord', 'type', 'hasDiagram', 'options'],
             },
@@ -585,6 +734,8 @@ TASK:
     const existing = questions[i]
     return {
       ...sanitized,
+      // Preserve original diagram if the critique pass didn't supply one
+      diagram: sanitized.diagram ?? existing?.diagram,
       id: existing?.id ?? crypto.randomUUID(),
       code: existing?.code ?? sharedGenerateQuestionCode(subject, {
         text: sanitized.text,
@@ -651,6 +802,7 @@ Return the ENTIRE assessment with ALL questions (corrected or unchanged).`
                 assessmentObjective: { type: Type.STRING, nullable: true },
                 difficultyStars: { type: Type.NUMBER, nullable: true },
                 options: { type: Type.ARRAY, items: { type: Type.STRING } },
+                diagram: DIAGRAM_SCHEMA,
               },
               required: ['text', 'answer', 'markScheme', 'marks', 'commandWord', 'type', 'hasDiagram', 'options'],
             },

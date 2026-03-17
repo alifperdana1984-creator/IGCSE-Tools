@@ -3,6 +3,54 @@ import type { AIProvider } from './providers'
 
 export type { AIProvider }
 
+// ── Structured diagram types ────────────────────────────────────────────────
+
+export interface CartesianGridSpec {
+  diagramType: 'cartesian_grid'
+  xMin: number; xMax: number
+  yMin: number; yMax: number
+  gridStep?: number
+  points?: Array<{ label: string; x: number; y: number; color?: string }>
+  segments?: Array<{ x1: number; y1: number; x2: number; y2: number; label?: string; dashed?: boolean }>
+  polygons?: Array<{ vertices: Array<{ x: number; y: number; label?: string }>; fill?: string }>
+}
+
+export interface GeomShapeDef {
+  kind: 'triangle' | 'rectangle' | 'circle' | 'polygon' | 'line'
+  vertices?: Array<{ x: number; y: number; label?: string }>
+  sides?: Array<{ label: string; fromVertex: number; toVertex: number }>
+  rightAngleAt?: number
+  x?: number; y?: number; width?: number; height?: number
+  cx?: number; cy?: number; radius?: number
+  fill?: string; stroke?: string
+  labels?: Array<{ text: string; x: number; y: number }>
+}
+
+export interface GeometricShapeSpec {
+  diagramType: 'geometric_shape'
+  viewWidth?: number; viewHeight?: number
+  shapes: GeomShapeDef[]
+}
+
+export interface NumberLineSpec {
+  diagramType: 'number_line'
+  min: number; max: number
+  step?: number
+  nlPoints?: Array<{ value: number; label?: string; open?: boolean }>
+  ranges?: Array<{ from: number; to: number; fromOpen?: boolean; toOpen?: boolean }>
+}
+
+export interface BarChartSpec {
+  diagramType: 'bar_chart'
+  title?: string; xLabel?: string; yLabel?: string
+  bars: Array<{ label: string; value: number }>
+  yMax?: number
+}
+
+export type DiagramSpec = CartesianGridSpec | GeometricShapeSpec | NumberLineSpec | BarChartSpec
+
+// ────────────────────────────────────────────────────────────────────────────
+
 export interface QuestionItem {
   id: string
   code?: string
@@ -15,6 +63,8 @@ export interface QuestionItem {
   hasDiagram: boolean
   /** True when the question text references a diagram but no SVG was generated — question may be unanswerable */
   diagramMissing?: boolean
+  /** Structured diagram data — rendered by DiagramRenderer; preferred over raw SVG in text */
+  diagram?: DiagramSpec
   syllabusObjective?: string
   difficultyStars?: 1 | 2 | 3
   /** Cambridge Assessment Objective: AO1 Knowledge, AO2 Application, AO3 Experimental */
