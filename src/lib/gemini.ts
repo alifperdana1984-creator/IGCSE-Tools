@@ -636,7 +636,7 @@ DIAGRAMS (MANDATORY RULES):
   }
 
   // Phase 2: generate diagrams for questions that need one but didn't get one
-  const needsDiagram = questions.filter(q => q.hasDiagram && !q.diagram && !q.diagramMissing)
+  const needsDiagram = questions.filter(q => q.hasDiagram && !q.diagram)
   if (needsDiagram.length > 0) {
     onLog?.(`Generating diagrams for ${needsDiagram.length} question${needsDiagram.length !== 1 ? 's' : ''}…`)
     const diagrams = await Promise.all(
