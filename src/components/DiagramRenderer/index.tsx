@@ -7,8 +7,8 @@ import type {
 
 function CartesianGrid({ spec }: { spec: CartesianGridSpec }) {
   const { xMin, xMax, yMin, yMax, gridStep = 1 } = spec
-  const rangeX = xMax - xMin
-  const rangeY = yMax - yMin
+  const rangeX = (xMax ?? 0) - (xMin ?? 0) || 10
+  const rangeY = (yMax ?? 0) - (yMin ?? 0) || 10
 
   const mL = 48, mR = 28, mT = 28, mB = 44
   const W = 400
@@ -150,7 +150,7 @@ function GeometricShape({ spec }: { spec: GeometricShapeSpec }) {
 
   return (
     <svg viewBox={`0 0 ${VW} ${VH}`} width="100%" style={{ maxWidth: VW, display: 'block' }}>
-      {spec.shapes.map((shape, si) => {
+      {(spec.shapes ?? []).map((shape, si) => {
         const stroke = shape.stroke ?? '#1a1a1a'
         const fill = shape.fill ?? 'none'
 
@@ -322,12 +322,13 @@ const BAR_COLORS = ['#2563eb', '#059669', '#d97706', '#dc2626', '#7c3aed', '#089
 
 function BarChart({ spec }: { spec: BarChartSpec }) {
   const W = 400, mL = 56, mR = 16, mT = 36, mB = 60
-  const { bars, yMax, title, xLabel, yLabel } = spec
-  const maxVal = yMax ?? Math.ceil(Math.max(...bars.map(b => b.value)) * 1.25)
+  const { yMax, title, xLabel, yLabel } = spec
+  const bars = spec.bars ?? []
+  const maxVal = yMax ?? (bars.length > 0 ? Math.ceil(Math.max(...bars.map(b => b.value)) * 1.25) : 10)
   const pH = 200
   const H = mT + pH + mB
   const pW = W - mL - mR
-  const slotW = pW / bars.length
+  const slotW = pW / (bars.length || 1)
   const barW = slotW * 0.6
   const gap = slotW * 0.2
   const scaleY = pH / maxVal

@@ -6,7 +6,19 @@ const KNOWN_DIAGRAM_TYPES = new Set(['cartesian_grid', 'geometric_shape', 'numbe
 function normalizeDiagram(raw: unknown): DiagramSpec | undefined {
   if (!raw || typeof raw !== 'object') return undefined
   const d = raw as Record<string, unknown>
-  if (!KNOWN_DIAGRAM_TYPES.has(d.diagramType as string)) return undefined
+  const dt = d.diagramType as string
+  if (!KNOWN_DIAGRAM_TYPES.has(dt)) return undefined
+  // Ensure required numeric ranges exist for types that need them
+  if (dt === 'cartesian_grid') {
+    if (d.xMin == null || d.xMax == null || d.yMin == null || d.yMax == null) return undefined
+  }
+  if (dt === 'number_line') {
+    if (d.min == null || d.max == null) return undefined
+  }
+  // Normalise nullable arrays to empty arrays so renderers never call .map() on null/undefined
+  for (const key of ['points', 'segments', 'polygons', 'shapes', 'nlPoints', 'ranges', 'bars'] as const) {
+    if (d[key] == null) d[key] = []
+  }
   return raw as DiagramSpec
 }
 
