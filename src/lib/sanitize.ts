@@ -314,6 +314,36 @@ function tryAutoGeometryFromText(text: string, answer = '', options: string[] = 
     return regularPolygonGeometry(4)
   }
 
+  // Pattern: "A circle has diameter AB. Point C is on the circumference."
+  const diameterMatch = clean.match(/\b(?:a\s+)?circle\s+has\s+diameter\s+([A-Z]{2})\b/i)
+  if (diameterMatch) {
+    const [d1, d2] = diameterMatch[1].toUpperCase().split('')
+    const cOnCirc = clean.match(/\bpoint\s+([A-Z])\s+is on the circumference\b/i)?.[1]?.toUpperCase()
+    const cName = cOnCirc && cOnCirc !== d1 && cOnCirc !== d2 ? cOnCirc : 'C'
+
+    const cx = 200, cy = 140, r = 90
+    const ax = cx + r, ay = cy
+    const bx = cx - r, by = cy
+    const theta = -125 * Math.PI / 180
+    const px = cx + r * Math.cos(theta), py = cy + r * Math.sin(theta)
+
+    return {
+      diagramType: 'geometric_shape',
+      viewWidth: 400,
+      viewHeight: 300,
+      shapes: [
+        {
+          kind: 'circle',
+          cx, cy, radius: r,
+          labels: [{ text: 'O', x: cx + 12, y: cy - 8 }],
+        },
+        { kind: 'line', vertices: [{ x: ax, y: ay, label: d1 }, { x: bx, y: by, label: d2 }] },
+        { kind: 'line', vertices: [{ x: ax, y: ay, label: d1 }, { x: px, y: py, label: cName }] },
+        { kind: 'line', vertices: [{ x: bx, y: by, label: d2 }, { x: px, y: py, label: cName }] },
+      ],
+    } as DiagramSpec
+  }
+
   // Pattern: "The bearing of town B from town A is 055°"
   const bearingMatch = clean.match(/\bbearing of (?:town|point)?\s*([A-Z])\s+from (?:town|point)?\s*([A-Z])\s+is\s*(\d{2,3})\s*°?/i)
   if (bearingMatch) {
@@ -613,7 +643,7 @@ export function sanitizeQuestion(q: any): Omit<QuestionItem, 'id'> {
   const assessmentObjective = (['AO1', 'AO2', 'AO3'] as const).find(ao => aoRaw.includes(ao))
 
   const normalizedText = normalizeSvgMarkdown(text)
-  const referencesDiagram = /\b(in the diagram|the diagram shows|refer to the diagram|as shown in the diagram|from the diagram|on the diagram|shown on the (grid|diagram|figure|graph)|the (grid|figure|graph) shows|shown in the (figure|graph|grid)|as shown (below|above)|on the (grid|graph) (below|above|shown)|shown on a (grid|graph)|coordinates? (?:of|shown)|point [A-Z] shown|in the (triangle|circle|polygon|quadrilateral|rectangle|trapezium|parallelogram)|the (triangle|circle|polygon|quadrilateral) [A-Z]{2,}|angle [A-Z]{2,3}\s*=|triangle [A-Z]{3}|bearing of|three-figure bearings?|is parallel to|transversal|straight line|tangent|centre of the circle|center of the circle|rotational symmetry|line symmetry|shape shown)\b/i.test(normalizedText)
+  const referencesDiagram = /\b(in the diagram|the diagram shows|refer to the diagram|as shown in the diagram|from the diagram|on the diagram|shown on the (grid|diagram|figure|graph)|the (grid|figure|graph) shows|shown in the (figure|graph|grid)|as shown (below|above)|on the (grid|graph) (below|above|shown)|shown on a (grid|graph)|coordinates? (?:of|shown)|point [A-Z] shown|in the (triangle|circle|polygon|quadrilateral|rectangle|trapezium|parallelogram)|the (triangle|circle|polygon|quadrilateral) [A-Z]{2,}|angle [A-Z]{2,3}\s*=|triangle [A-Z]{3}|bearing of|three-figure bearings?|is parallel to|transversal|straight line|tangent|diameter [A-Z]{2}|centre of the circle|center of the circle|rotational symmetry|line symmetry|shape shown)\b/i.test(normalizedText)
   const rawDiagram = normalizeDiagram(q.diagram)
 
   // Auto-generate a cartesian_grid when the model didn't provide one.

@@ -35,6 +35,9 @@ export function preprocessLatex(text: string): string {
   result = result.replace(/(\d+(?:\.\d+)?)\\\[°\]/g, '$1^{\\circ}')
   // 45[o] (no backslash) → 45^{\circ}
   result = result.replace(/(\d+(?:\.\d+)?)\[o\]/g, '$1^{\\circ}')
+  // "°irc" / "Â°irc" corruption → degree symbol
+  result = result.replace(/(?:Â°|°)\s*irc\b/g, '^{\\circ}')
+  result = result.replace(/\^\{?\s*irc\s*\}?/g, '^{\\circ}')
   // 120°xto or 120°xtо — unicode degree followed by "xto" junk → 120°
   // This happens when model writes "120°\text{o}" or similar that gets mangled
   result = result.replace(/(\d+(?:\.\d+)?)°xto\b/g, '$1^{\\circ}')
