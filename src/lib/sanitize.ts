@@ -211,9 +211,36 @@ function clamp(n: number, lo: number, hi: number): number {
   return Math.max(lo, Math.min(hi, n))
 }
 
+function inferNumericAnswer(answer: string, options: string[]): number | undefined {
+  const direct = answer.match(/-?\d+(?:\.\d+)?/)
+  if (direct) return Number(direct[0])
+  const letter = answer.trim().match(/^[A-D]/i)?.[0]?.toUpperCase()
+  if (!letter) return undefined
+  const idx = ['A', 'B', 'C', 'D'].indexOf(letter)
+  if (idx < 0 || !options[idx]) return undefined
+  const fromOption = options[idx].match(/-?\d+(?:\.\d+)?/)
+  return fromOption ? Number(fromOption[0]) : undefined
+}
+
+function regularPolygonGeometry(sides: number): DiagramSpec {
+  const n = Math.max(3, Math.min(10, Math.round(sides)))
+  const letters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'.slice(0, n).split('')
+  const cx = 5, cy = 5, r = 3.8
+  const points: Record<string, [number, number]> = {}
+  for (let i = 0; i < n; i++) {
+    const ang = -Math.PI / 2 + (2 * Math.PI * i) / n
+    points[letters[i]] = [cx + r * Math.cos(ang), cy + r * Math.sin(ang)]
+  }
+  const segments = Array.from({ length: n }, (_, i) => ({
+    from: letters[i],
+    to: letters[(i + 1) % n],
+  }))
+  return { diagramType: 'geometry', points, segments } as DiagramSpec
+}
+
 /** Build a simple geometry diagram from common angle/triangle phrasings so
  *  diagram-referenced questions remain answerable even when provider omits diagram JSON. */
-function tryAutoGeometryFromText(text: string): DiagramSpec | undefined {
+function tryAutoGeometryFromText(text: string, answer = '', options: string[] = []): DiagramSpec | undefined {
   const clean = text
     .replace(/\$+/g, '')
     .replace(/\\angle/g, '∠')
@@ -226,6 +253,15 @@ function tryAutoGeometryFromText(text: string): DiagramSpec | undefined {
     .replace(/âˆ’/g, '-')
 
   // Pattern: "AB is a straight line. C is a point on AB. ∠ACD = 110°"
+  // Pattern: generic rotational symmetry prompts that reference "the shape shown".
+  if (/\border of rotational symmetry\b/i.test(clean) && /\bshape\b/i.test(clean)) {
+    const inferredOrder = inferNumericAnswer(answer, options)
+    if (inferredOrder && inferredOrder >= 3 && inferredOrder <= 10) {
+      return regularPolygonGeometry(inferredOrder)
+    }
+    return regularPolygonGeometry(4)
+  }
+
   const straightAngle = clean.match(/\b([A-Z])([A-Z])\s+is a straight line\b[\s\S]*?\b([A-Z])\s+is a point on\s+([A-Z])([A-Z])\b[\s\S]*?(?:∠|angle)\s*([A-Z]{3})\s*=\s*(\d+(?:\.\d+)?)\s*°?/i)
   if (straightAngle) {
     const line1 = straightAngle[1].toUpperCase()
@@ -309,27 +345,51 @@ function tryAutoGeometryFromText(text: string): DiagramSpec | undefined {
       pentagon: 5, hexagon: 6, heptagon: 7, octagon: 8, nonagon: 9, decagon: 10,
     }
     const n = sidesByName[regPoly[1].toLowerCase()]
-    const letters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'.slice(0, n).split('')
-    const cx = 5, cy = 5, r = 3.8
-    const points: Record<string, [number, number]> = {}
-    for (let i = 0; i < n; i++) {
-      const ang = -Math.PI / 2 + (2 * Math.PI * i) / n
-      points[letters[i]] = [cx + r * Math.cos(ang), cy + r * Math.sin(ang)]
-    }
-    const segments = Array.from({ length: n }, (_, i) => ({
-      from: letters[i],
-      to: letters[(i + 1) % n],
-    }))
-    return { diagramType: 'geometry', points, segments } as DiagramSpec
+    return regularPolygonGeometry(n)
   }
 
   // Pattern: "line AB is parallel to line CD. Line EF is a straight line."
   // Build a standard parallel-lines-with-transversal geometry diagram.
+  // Pattern: circle + center + tangent style questions.
+  if (/\bcentre of the circle\b/i.test(clean) && /\btangent\b/i.test(clean)) {
+    const centerLetter = clean.match(/\b([A-Z])\s+is the centre of the circle\b/i)?.[1]?.toUpperCase() ?? 'O'
+    const onCirc = clean.match(/\bpoint\s+([A-Z])\s+is on the circumference\b/i)?.[1]?.toUpperCase() ?? 'A'
+    const tangentLine = clean.match(/\bline\s+([A-Z]{2})\s+is a tangent\b/i)?.[1]?.toUpperCase() ?? 'BC'
+    const centralAngle = clean.match(/\bangle\s+([A-Z]{3})\s*(?:=|is)\s*(\d+(?:\.\d+)?)\s*°?/i)
+    const centralAngleName = centralAngle?.[1]?.toUpperCase()
+    const centralAngleLabel = centralAngle ? `${clamp(Number(centralAngle[2]), 1, 359)}°` : undefined
+
+    const O = centerLetter
+    const A = onCirc
+    const [B, C] = tangentLine.split('')
+    const radialOther = centralAngleName && centralAngleName[1] === O ? centralAngleName[2] : 'C'
+
+    const points: Record<string, [number, number]> = {
+      [O]: [5, 5],
+      [A]: [5, 1.4],
+      [B]: [1.6, 1.4],
+      [C]: [8.6, 1.4],
+      [radialOther]: [8.1, 6.9],
+    }
+
+    return {
+      diagramType: 'geometry',
+      points,
+      segments: [
+        { from: B, to: C },
+        { from: O, to: A },
+        { from: O, to: radialOther },
+      ],
+      perpendicular: [[`${O}${A}`, `${B}${C}`]],
+      ...(centralAngleLabel ? { angles: [{ at: O, between: [A, radialOther], label: centralAngleLabel }] } : {}),
+    } as DiagramSpec
+  }
+
   const parallelLines = clean.match(/\bline\s+([A-Z]{2})\s+is parallel to\s+line\s+([A-Z]{2})\b/i)
   if (parallelLines) {
     const l1 = parallelLines[1].toUpperCase()
     const l2 = parallelLines[2].toUpperCase()
-    const t = clean.match(/\bline\s+([A-Z]{2})\s+is a straight line\b/i)?.[1]?.toUpperCase()
+    const t = clean.match(/\bline\s+([A-Z]{2})\s+(?:is\s+)?(?:a\s+)?(?:transversal|straight line)\b/i)?.[1]?.toUpperCase()
 
     const [a, b] = l1.split('')
     const [c, d] = l2.split('')
@@ -344,9 +404,19 @@ function tryAutoGeometryFromText(text: string): DiagramSpec | undefined {
       [f]: [3.6, 1.5],
     }
 
-    const angles = /\bx\b/i.test(clean)
-      ? [{ at: e, between: [a, f] as [string, string], label: 'x' }]
-      : undefined
+    const namedParallelAngle = clean.match(/\b(?:angle|∠)\s*([A-Z]{3})\s*(?:=|is)?\s*(\d+(?:\.\d+)?)\s*°?/i)
+    let angles: Array<{ at: string; between: [string, string]; label: string }> | undefined
+    if (namedParallelAngle) {
+      const name = namedParallelAngle[1].toUpperCase()
+      const at = name[1]
+      const p1 = name[0]
+      const p2 = name[2]
+      if (points[at] && points[p1] && points[p2]) {
+        angles = [{ at, between: [p1, p2], label: `${clamp(Number(namedParallelAngle[2]), 1, 359)}°` }]
+      }
+    } else if (/\bx\b/i.test(clean)) {
+      angles = [{ at: e, between: [a, f] as [string, string], label: 'x' }]
+    }
 
     return {
       diagramType: 'geometry',
@@ -440,7 +510,7 @@ export function sanitizeQuestion(q: any): Omit<QuestionItem, 'id'> {
     if (q.hasDiagram || referencesDiagram) {
       const fromText = tryAutoCartesianFromText(normalizedText)
       if (fromText) return fromText
-      const fromGeometry = tryAutoGeometryFromText(normalizedText)
+      const fromGeometry = tryAutoGeometryFromText(normalizedText, fix(q.answer ?? ''), options)
       if (fromGeometry) return fromGeometry
     }
     // 2. Fallback: all MCQ options are coordinate pairs → plot the correct answer as point P
@@ -500,4 +570,3 @@ export function generateQuestionCode(
   const shortId = Math.random().toString(36).substring(2, 6).toUpperCase()
   return `${subj}-${syl}-${shortId}`
 }
-
