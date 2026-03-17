@@ -53,7 +53,7 @@ const QUESTION_SCHEMA = `{
       "syllabusObjective": "string (e.g. 'C4.1 – Define the term acid in terms of proton donation')",
       "assessmentObjective": "AO1 | AO2 | AO3",
       "difficultyStars": 1 or 2 or 3,
-      "options": ["option A text", "option B text", "option C text", "option D text"]
+      "options": ["option A text", "option B text", "option C text", "option D text"] (for MCQ: exactly 4 strings; for all other types: empty array [])
     }
   ]
 }`

@@ -358,7 +358,7 @@ GENERATION RULES:
    - Total marks = sum of all sub-part marks.
    - Each sub-part uses a different command word targeting different cognitive levels.
 
-3. MCQ QUESTIONS (type="mcq"): Provide exactly 4 answer choices in the "options" array (plain text, no letter prefix). The "answer" field must be ONLY the letter "A", "B", "C", or "D". All four distractors must be plausible — each representing a common misconception. If 4 truly distinct distractor options cannot be written, use short_answer instead.
+3. MCQ QUESTIONS (type="mcq"): Provide exactly 4 answer choices in the "options" array (plain text, no letter prefix). The "answer" field must be ONLY the letter "A", "B", "C", or "D". All four distractors must be plausible — each representing a common misconception. If 4 truly distinct distractor options cannot be written, use short_answer instead. For non-MCQ questions, "options" must be an empty array [].
 
 4. SHORT ANSWER (type="short_answer"): 1–3 marks. Direct recall or simple application. No sub-parts needed.
 
@@ -407,9 +407,9 @@ GENERATION RULES:
                 syllabusObjective: { type: Type.STRING, nullable: true },
                 assessmentObjective: { type: Type.STRING, nullable: true },
                 difficultyStars: { type: Type.NUMBER, nullable: true },
-                options: { type: Type.ARRAY, items: { type: Type.STRING }, nullable: true },
+                options: { type: Type.ARRAY, items: { type: Type.STRING } },
               },
-              required: ['text', 'answer', 'markScheme', 'marks', 'commandWord', 'type', 'hasDiagram'],
+              required: ['text', 'answer', 'markScheme', 'marks', 'commandWord', 'type', 'hasDiagram', 'options'],
             },
           },
         },
@@ -515,9 +515,9 @@ TASK:
                 syllabusObjective: { type: Type.STRING, nullable: true },
                 assessmentObjective: { type: Type.STRING, nullable: true },
                 difficultyStars: { type: Type.NUMBER, nullable: true },
-                options: { type: Type.ARRAY, items: { type: Type.STRING }, nullable: true },
+                options: { type: Type.ARRAY, items: { type: Type.STRING } },
               },
-              required: ['text', 'answer', 'markScheme', 'marks', 'commandWord', 'type', 'hasDiagram'],
+              required: ['text', 'answer', 'markScheme', 'marks', 'commandWord', 'type', 'hasDiagram', 'options'],
             },
           },
         },
@@ -596,9 +596,9 @@ Return the ENTIRE assessment with ALL questions (corrected or unchanged).`
                 syllabusObjective: { type: Type.STRING, nullable: true },
                 assessmentObjective: { type: Type.STRING, nullable: true },
                 difficultyStars: { type: Type.NUMBER, nullable: true },
-                options: { type: Type.ARRAY, items: { type: Type.STRING }, nullable: true },
+                options: { type: Type.ARRAY, items: { type: Type.STRING } },
               },
-              required: ['text', 'answer', 'markScheme', 'marks', 'commandWord', 'type', 'hasDiagram'],
+              required: ['text', 'answer', 'markScheme', 'marks', 'commandWord', 'type', 'hasDiagram', 'options'],
             },
           },
         },
@@ -755,9 +755,9 @@ export async function analyzeFile(
                 commandWord: { type: Type.STRING },
                 type: { type: Type.STRING },
                 hasDiagram: { type: Type.BOOLEAN },
-                options: { type: Type.ARRAY, items: { type: Type.STRING }, nullable: true },
+                options: { type: Type.ARRAY, items: { type: Type.STRING } },
               },
-              required: ['text', 'answer', 'markScheme', 'marks', 'commandWord', 'type', 'hasDiagram'],
+              required: ['text', 'answer', 'markScheme', 'marks', 'commandWord', 'type', 'hasDiagram', 'options'],
             },
           },
         },
