@@ -2,6 +2,7 @@ import type { QuestionItem, Assessment, AnalyzeFileResult, GenerationConfig } fr
 import type { Reference } from './ai'
 import { withRetry, DIFFICULTY_GUIDANCE, PAST_PAPER_FOCUS, SUBJECT_SPECIFIC_RULES, MARK_SCHEME_FORMAT, CAMBRIDGE_COMMAND_WORDS } from './gemini'
 import { sanitizeQuestion, generateQuestionCode } from './sanitize'
+import { parseJsonWithRecovery } from './json'
 
 const ANTHROPIC_URL = 'https://api.anthropic.com/v1/messages'
 
@@ -67,12 +68,7 @@ ASSESSMENT OBJECTIVES:
 // sanitizeQuestion and generateQuestionCode imported from './sanitize'
 
 function safeParseJson(text: string): any {
-  const cleaned = text.trim().replace(/^```(?:json)?\n?/, '').replace(/\n?```$/, '')
-  try { return JSON.parse(cleaned) } catch {
-    const start = cleaned.indexOf('{'), end = cleaned.lastIndexOf('}')
-    if (start !== -1 && end > start) return JSON.parse(cleaned.substring(start, end + 1))
-    throw new Error('Failed to parse JSON from Anthropic response')
-  }
+  return parseJsonWithRecovery(text, 'Anthropic')
 }
 
 function refData(ref: Reference): string {
@@ -166,12 +162,10 @@ ${QUESTION_SCHEMA}`
 
   content.push({ type: 'text', text: prompt })
 
-  const raw = await withRetry(() =>
-    anthropicMessages([{ role: 'user', content }], buildSystem(config.subject), config.model, key),
-    3, onRetry
-  )
-
-  const parsed = safeParseJson(raw)
+  const parsed = await withRetry(async () => {
+    const raw = await anthropicMessages([{ role: 'user', content }], buildSystem(config.subject), config.model, key)
+    return safeParseJson(raw)
+  }, 3, onRetry)
   let questions: QuestionItem[] = (parsed.questions ?? []).map((q: any) => {
     const sanitized = sanitizeQuestion(q)
     return {
@@ -226,12 +220,10 @@ ${QUESTION_SCHEMA}`
   const systemPrompt = `You are a Senior Cambridge IGCSE Chief Examiner. Your only job is to ensure questions discriminate between A and A* candidates. Be ruthless: any question answerable from memory must be rewritten.
 ALWAYS respond with ONLY valid JSON — no markdown fences, no extra text outside the JSON object.`
 
-  const raw = await withRetry(() =>
-    anthropicMessages([{ role: 'user', content: prompt }], systemPrompt, model, apiKey),
-    3, onRetry
-  )
-
-  const parsed = safeParseJson(raw)
+  const parsed = await withRetry(async () => {
+    const raw = await anthropicMessages([{ role: 'user', content: prompt }], systemPrompt, model, apiKey)
+    return safeParseJson(raw)
+  }, 3, onRetry)
   return (parsed.questions ?? []).map((q: any, i: number) => {
     const sanitized = sanitizeQuestion(q)
     return {
@@ -272,11 +264,10 @@ Return the ENTIRE assessment (all questions corrected or unchanged) as JSON (no 
 ASSESSMENT TO AUDIT:
 ${questionsText}`
 
-  const raw = await withRetry(() =>
-    anthropicMessages([{ role: 'user', content: prompt }], buildSystem(subject), model, apiKey ?? '')
-  )
-
-  const parsed = safeParseJson(raw)
+  const parsed = await withRetry(async () => {
+    const raw = await anthropicMessages([{ role: 'user', content: prompt }], buildSystem(subject), model, apiKey ?? '')
+    return safeParseJson(raw)
+  })
   return (parsed.questions ?? []).map((q: any, i: number) => {
     const sanitized = sanitizeQuestion(q)
     return {
@@ -363,11 +354,10 @@ Actually use this exact structure:
 
   content.push({ type: 'text', text: prompt })
 
-  const raw = await withRetry(() =>
-    anthropicMessages([{ role: 'user', content }], buildSystem(subject), model, apiKey ?? '')
-  )
-
-  const parsed = safeParseJson(raw)
+  const parsed = await withRetry(async () => {
+    const raw = await anthropicMessages([{ role: 'user', content }], buildSystem(subject), model, apiKey ?? '')
+    return safeParseJson(raw)
+  })
   return {
     analysis: parsed.analysis ?? '',
     questions: (parsed.questions ?? []).map((q: any) => {

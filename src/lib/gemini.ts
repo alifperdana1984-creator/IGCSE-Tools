@@ -2,6 +2,7 @@ import { GoogleGenAI, Type } from "@google/genai";
 import type { QuestionItem, Assessment, AnalyzeFileResult, GenerationConfig, GeminiError } from './types'
 import type { Reference } from './ai'
 import { sanitizeQuestion, generateQuestionCode as sharedGenerateQuestionCode } from './sanitize'
+import { parseJsonWithRecovery } from './json'
 
 function getAI(apiKey?: string) {
   if (!apiKey) {
@@ -227,6 +228,18 @@ export async function withRetry<T>(
           message: 'Invalid or unauthorized API key. Please check your key in API Settings.',
         } satisfies GeminiError
       }
+      if (status === 422 || err?.type === 'invalid_response') {
+        if (i < maxRetries - 1) {
+          onRetry?.(i + 1)
+          await new Promise(r => setTimeout(r, 1500))
+          continue
+        }
+        throw {
+          type: 'invalid_response',
+          retryable: true,
+          message: 'Model returned invalid JSON. Retried automatically but still failed. Please retry.',
+        } satisfies GeminiError
+      }
       // Preserve original error message if available
       const originalMsg = err?.message && !err.message.startsWith('{') ? err.message : null
       throw {
@@ -383,7 +396,8 @@ GENERATION RULES:
 
   parts.push({ text: prompt })
 
-  const response = await withRetry(() => ai.models.generateContent({
+  const raw = await withRetry(async () => {
+    const response = await ai.models.generateContent({
     model: config.model || "gemini-3-flash-preview",
     contents: { parts },
     config: {
@@ -436,9 +450,9 @@ SVG DIAGRAMS:
 - CRITICAL: Use camelCase for all SVG attributes (strokeWidth, fontSize, fontFamily, textAnchor, dominantBaseline).
 - Include only what is needed to answer the question — no decorative elements.`,
     },
-  }), 3, onRetry)
-
-  const raw = safeJsonParse(response.text || '{}') as { questions: Omit<QuestionItem, 'id'>[] }
+    })
+    return safeJsonParse(response.text || '{}') as { questions: Omit<QuestionItem, 'id'>[] }
+  }, 3, onRetry)
   let questions: QuestionItem[] = (raw.questions ?? []).map(q => {
     const sanitized = sanitizeQuestion(q)
     return {
@@ -491,7 +505,8 @@ TASK:
 5. If a question is already 8+ — preserve it exactly; do NOT simplify.
 6. Return ALL ${questions.length} questions (revised or unchanged).`
 
-  const response = await withRetry(() => ai.models.generateContent({
+  const raw = await withRetry(async () => {
+    const response = await ai.models.generateContent({
     model,
     contents: prompt,
     config: {
@@ -525,9 +540,9 @@ TASK:
       },
       systemInstruction: `You are a Senior Cambridge IGCSE Chief Examiner. Your only job is to ensure questions discriminate between A and A* candidates. Be ruthless: any question a student could answer from memory or with a single step of reasoning must be rewritten. Unfamiliar contexts, multi-stage synthesis, and higher-order command words are non-negotiable.`,
     },
-  }), 3, onRetry)
-
-  const raw = safeJsonParse(response.text || '{}') as { questions: any[] }
+    })
+    return safeJsonParse(response.text || '{}') as { questions: any[] }
+  }, 3, onRetry)
   return (raw.questions ?? []).map((q, i) => {
     const sanitized = sanitizeQuestion(q)
     const existing = questions[i]
@@ -573,7 +588,8 @@ AUDIT CRITERIA (fix ALL violations):
 
 Return the ENTIRE assessment with ALL questions (corrected or unchanged).`
 
-  const response = await withRetry(() => ai.models.generateContent({
+  const raw = await withRetry(async () => {
+    const response = await ai.models.generateContent({
     model: model,
     contents: prompt,
     config: {
@@ -605,9 +621,9 @@ Return the ENTIRE assessment with ALL questions (corrected or unchanged).`
         required: ['questions'],
       },
     },
-  }))
-
-  const raw = safeJsonParse(response.text || '{}') as { questions: Omit<QuestionItem, 'id'>[] }
+    })
+    return safeJsonParse(response.text || '{}') as { questions: Omit<QuestionItem, 'id'>[] }
+  })
   return (raw.questions ?? []).map((q, i) => {
     const sanitized = sanitizeQuestion(q)
     const existing = assessment.questions[i]
@@ -672,34 +688,7 @@ export async function getStudentFeedback(
 // sanitizeQuestion is now imported from './sanitize'
 
 function safeJsonParse(text: string) {
-  if (!text) return {};
-
-  let cleaned = text.trim();
-
-  // Remove markdown code blocks if present
-  if (cleaned.startsWith("```")) {
-    cleaned = cleaned.replace(/^```(?:json)?\n?/, "").replace(/\n?```$/, "");
-  }
-
-  try {
-    return JSON.parse(cleaned);
-  } catch (e) {
-    // Attempt to find the first '{' and last '}'
-    const start = cleaned.indexOf('{');
-    const end = cleaned.lastIndexOf('}');
-
-    if (start !== -1 && end !== -1 && end > start) {
-      try {
-        return JSON.parse(cleaned.substring(start, end + 1));
-      } catch (e2) {
-        // If it's still failing, it might be an escaping issue or truncation
-        // We'll throw the original error but with more context
-        console.error("JSON Parse Error Context:", cleaned.substring(Math.max(0, cleaned.length - 500)));
-        throw e;
-      }
-    }
-    throw e;
-  }
+  return parseJsonWithRecovery(text || '{}', 'Gemini')
 }
 
 export async function analyzeFile(
@@ -733,43 +722,44 @@ export async function analyzeFile(
 
   parts.push({ text: prompt })
 
-  const response = await withRetry(() => ai.models.generateContent({
-    model: model,
-    contents: { parts },
-    config: {
-      responseMimeType: "application/json",
-      maxOutputTokens: 8192,
-      responseSchema: {
-        type: Type.OBJECT,
-        properties: {
-          analysis: { type: Type.STRING },
-          questions: {
-            type: Type.ARRAY,
-            items: {
-              type: Type.OBJECT,
-              properties: {
-                text: { type: Type.STRING },
-                answer: { type: Type.STRING },
-                markScheme: { type: Type.STRING },
-                marks: { type: Type.NUMBER },
-                commandWord: { type: Type.STRING },
-                type: { type: Type.STRING },
-                hasDiagram: { type: Type.BOOLEAN },
-                options: { type: Type.ARRAY, items: { type: Type.STRING } },
+  const raw = await withRetry(async () => {
+    const response = await ai.models.generateContent({
+      model: model,
+      contents: { parts },
+      config: {
+        responseMimeType: "application/json",
+        maxOutputTokens: 8192,
+        responseSchema: {
+          type: Type.OBJECT,
+          properties: {
+            analysis: { type: Type.STRING },
+            questions: {
+              type: Type.ARRAY,
+              items: {
+                type: Type.OBJECT,
+                properties: {
+                  text: { type: Type.STRING },
+                  answer: { type: Type.STRING },
+                  markScheme: { type: Type.STRING },
+                  marks: { type: Type.NUMBER },
+                  commandWord: { type: Type.STRING },
+                  type: { type: Type.STRING },
+                  hasDiagram: { type: Type.BOOLEAN },
+                  options: { type: Type.ARRAY, items: { type: Type.STRING } },
+                },
+                required: ['text', 'answer', 'markScheme', 'marks', 'commandWord', 'type', 'hasDiagram', 'options'],
               },
-              required: ['text', 'answer', 'markScheme', 'marks', 'commandWord', 'type', 'hasDiagram', 'options'],
             },
           },
+          required: ['analysis', 'questions'],
         },
-        required: ['analysis', 'questions'],
-      },
-      systemInstruction: `You are an expert Cambridge IGCSE ${subject} assessment designer.
+        systemInstruction: `You are an expert Cambridge IGCSE ${subject} assessment designer.
 Analyze past paper questions with high precision and generate similar questions.
 Use SVG for any diagrams using **camelCase** attributes.`,
-    },
-  }))
-
-  const raw = safeJsonParse(response.text || '{}')
+      },
+    })
+    return safeJsonParse(response.text || '{}')
+  })
   return {
     analysis: raw.analysis ?? '',
     questions: (raw.questions ?? []).map((q: any) => {

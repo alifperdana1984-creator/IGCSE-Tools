@@ -2,6 +2,7 @@ import type { QuestionItem, Assessment, AnalyzeFileResult, GenerationConfig, AIE
 import type { Reference } from './ai'
 import { withRetry, DIFFICULTY_GUIDANCE, PAST_PAPER_FOCUS, SUBJECT_SPECIFIC_RULES, MARK_SCHEME_FORMAT, CAMBRIDGE_COMMAND_WORDS, ASSESSMENT_OBJECTIVES } from './gemini'
 import { sanitizeQuestion, generateQuestionCode } from './sanitize'
+import { parseJsonWithRecovery } from './json'
 
 const OPENAI_URL = 'https://api.openai.com/v1/chat/completions'
 
@@ -157,12 +158,10 @@ Respond with JSON matching this schema: ${QUESTION_SCHEMA}`
   }))
   userContent.push({ type: 'text', text: prompt })
 
-  const raw = await withRetry(() =>
-    openaiChat([{ role: 'user', content: userContent }], config.model, key, buildSystemPrompt(config.subject)),
-    3, onRetry
-  )
-
-  const parsed = JSON.parse(raw) as { questions: any[] }
+  const parsed = await withRetry(async () => {
+    const raw = await openaiChat([{ role: 'user', content: userContent }], config.model, key, buildSystemPrompt(config.subject))
+    return parseJsonWithRecovery<{ questions: any[] }>(raw, 'OpenAI')
+  }, 3, onRetry)
   let questions: QuestionItem[] = (parsed.questions ?? []).map(q => {
     const sanitized = sanitizeQuestion(q)
     return {
@@ -214,12 +213,10 @@ TASK:
   const systemPrompt = `You are a Senior Cambridge IGCSE Chief Examiner. Your only job is to ensure questions discriminate between A and A* candidates. Be ruthless: any question answerable from memory must be rewritten.
 ALWAYS respond with ONLY valid JSON — no markdown fences, no extra text outside the JSON object.`
 
-  const raw = await withRetry(() =>
-    openaiChat([{ role: 'user', content: prompt }], model, apiKey, systemPrompt),
-    3, onRetry
-  )
-
-  const parsed = JSON.parse(raw) as { questions: any[] }
+  const parsed = await withRetry(async () => {
+    const raw = await openaiChat([{ role: 'user', content: prompt }], model, apiKey, systemPrompt)
+    return parseJsonWithRecovery<{ questions: any[] }>(raw, 'OpenAI')
+  }, 3, onRetry)
   return (parsed.questions ?? []).map((q, i) => {
     const sanitized = sanitizeQuestion(q)
     return {
@@ -259,11 +256,10 @@ Return the ENTIRE assessment (all questions corrected or unchanged) as JSON: ${Q
 ASSESSMENT TO AUDIT:
 ${questionsText}`
 
-  const raw = await withRetry(() =>
-    openaiChat([{ role: 'user', content: prompt }], model, apiKey ?? '', buildSystemPrompt(subject))
-  )
-
-  const parsed = JSON.parse(raw) as { questions: any[] }
+  const parsed = await withRetry(async () => {
+    const raw = await openaiChat([{ role: 'user', content: prompt }], model, apiKey ?? '', buildSystemPrompt(subject))
+    return parseJsonWithRecovery<{ questions: any[] }>(raw, 'OpenAI')
+  })
   return (parsed.questions ?? []).map((q, i) => {
     const sanitized = sanitizeQuestion(q)
     return {
@@ -353,11 +349,10 @@ Respond with JSON: { "analysis": "string", "questions": [...] } matching: ${QUES
 
   userContent.push({ type: 'text', text: prompt + (isPdf ? '\n\n(Note: PDF provided as text context — analyze based on subject)' : '') })
 
-  const raw = await withRetry(() =>
-    openaiChat([{ role: 'user', content: userContent }], model, apiKey ?? '', buildSystemPrompt(subject))
-  )
-
-  const parsed = JSON.parse(raw)
+  const parsed = await withRetry(async () => {
+    const raw = await openaiChat([{ role: 'user', content: userContent }], model, apiKey ?? '', buildSystemPrompt(subject))
+    return parseJsonWithRecovery<{ analysis?: string; questions?: any[] }>(raw, 'OpenAI')
+  })
   return {
     analysis: parsed.analysis ?? '',
     questions: (parsed.questions ?? []).map((q: any) => {
