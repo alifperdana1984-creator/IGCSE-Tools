@@ -477,7 +477,10 @@ ASSESSMENT OBJECTIVES:
 SVG DIAGRAMS:
 - Clean "exam paper" style: black lines, white/transparent background, labelled with leader lines.
 - CRITICAL: Use camelCase for all SVG attributes (strokeWidth, fontSize, fontFamily, textAnchor, dominantBaseline).
-- Include only what is needed to answer the question — no decorative elements.`,
+- Include only what is needed to answer the question — no decorative elements.
+- SVG TEXT LABELS MUST BE PLAIN TEXT — never use LaTeX inside SVG text/tspan elements.
+  Write "5.2 m" not "$5.2 \text{ m}$", write "60°" not "$60^\circ$", write "AB = 8 cm" not "$AB = 8$ cm".
+  LaTeX cannot render inside SVG — raw strings will appear instead.`,
     },
     })
     const usage = getGeminiUsage(response)

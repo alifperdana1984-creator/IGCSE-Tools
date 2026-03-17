@@ -42,6 +42,27 @@ export function parseSVGSafe(svgString: string): string | null {
     }
   })
 
+  // Strip LaTeX from SVG <text> elements — SVG cannot render KaTeX, so
+  // raw delimiters like "$5.2 \text{ m}$" would show as ugly strings.
+  // Convert to readable plain text: "$5.2 \text{ m}$" → "5.2 m", "$60^\circ$" → "60°"
+  doc.querySelectorAll('text, tspan').forEach(el => {
+    const raw = el.textContent ?? ''
+    if (!raw.includes('$') && !raw.includes('\\')) return
+    const plain = raw
+      .replace(/\$([^$]+)\$/g, '$1')            // strip outer $...$
+      .replace(/\\text\s*\{([^}]*)\}/g, '$1')   // \text{m} → m
+      .replace(/\\mathrm\s*\{([^}]*)\}/g, '$1') // \mathrm{cm} → cm
+      .replace(/\\frac\s*\{([^}]*)\}\s*\{([^}]*)\}/g, '$1/$2') // \frac{a}{b} → a/b
+      .replace(/\^\\circ|\^\\degree/g, '°')     // ^\circ → °
+      .replace(/\\circ|\\degree/g, '°')         // lone \circ → °
+      .replace(/\\cdot/g, '·')
+      .replace(/\\times/g, '×')
+      .replace(/\\pm/g, '±')
+      .replace(/\\\s*/g, '')                     // remove remaining backslashes
+      .replace(/\s+/g, ' ').trim()
+    if (plain !== raw) el.textContent = plain
+  })
+
   // Preserve intrinsic dimensions as viewBox so the SVG scales properly
   if (!svg.getAttribute('viewBox')) {
     const w = Number.parseFloat(svg.getAttribute('width') ?? '')
