@@ -416,9 +416,17 @@ async function generateDiagramForQuestion(
 
 QUESTION: ${question.text}${optText}${ansText}
 
-Pick the correct diagramType and fill in all required fields:
-• "cartesian_grid" — xMin,xMax,yMin,yMax,gridStep; points:[{label,x,y}]; segments:[{x1,y1,x2,y2}]
-• "geometric_shape" — shapes:[{kind,vertices/cx/cy/radius/x/y/width/height,sides,labels}] canvas 400×300 px, ~40 px margins
+Pick the correct diagramType and fill in all required fields. ALL coordinate values MUST be plain integers or decimals — never null, never strings.
+
+• "cartesian_grid" — xMin,xMax,yMin,yMax (integers),gridStep(1 or 2); points:[{label,x,y}]; segments:[{x1,y1,x2,y2}]
+• "geometric_shape" — canvas 400×300 px, keep all coordinates 40–380 x, 20–280 y.
+    shapes:[{kind,vertices,sides,rightAngleAt,cx,cy,radius,x,y,width,height,labels}]
+    - triangle/polygon: vertices:[{x,y,label}] (integers), sides:[{label:"8 cm",fromVertex:0,toVertex:1}], rightAngleAt: vertex index for right angle
+    - rectangle: x,y,width,height (integers), sides:[{label,fromVertex,toVertex}] corners indexed 0=TL 1=TR 2=BR 3=BL
+    - circle: cx,cy,radius (integers), labels:[{text,x,y}]
+    - line: vertices:[{x,y,label}]
+    Example right triangle AB=8cm BC=6cm right angle B:
+    {"diagramType":"geometric_shape","shapes":[{"kind":"triangle","vertices":[{"x":80,"y":240,"label":"A"},{"x":80,"y":100,"label":"B"},{"x":260,"y":240,"label":"C"}],"sides":[{"label":"8 cm","fromVertex":0,"toVertex":1},{"label":"6 cm","fromVertex":1,"toVertex":2}],"rightAngleAt":1}]}
 • "number_line" — min,max,step; nlPoints:[{value,open,label}]; ranges:[{from,to}]
 • "bar_chart" — bars:[{label,value}]; title,xLabel,yLabel optional
 All label strings: plain text only, no LaTeX or dollar signs.`

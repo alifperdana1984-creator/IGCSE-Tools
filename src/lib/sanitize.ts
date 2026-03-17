@@ -8,31 +8,59 @@ export function normalizeDiagram(raw: unknown): DiagramSpec | undefined {
   const d = raw as Record<string, unknown>
   const dt = d.diagramType as string
   if (!KNOWN_DIAGRAM_TYPES.has(dt)) return undefined
-  // Ensure required numeric ranges exist for types that need them
+
+  // Coerce string numbers to actual numbers (AI sometimes returns "60" instead of 60)
+  const toNum = (v: unknown) => (v == null ? v : Number(v))
   const isFiniteNum = (v: unknown) => typeof v === 'number' && isFinite(v)
+  const coerceNum = (v: unknown) => { const n = toNum(v); return (n != null && isFiniteNum(n)) ? n : v }
+
+  for (const key of ['xMin','xMax','yMin','yMax','gridStep','min','max','step','viewWidth','viewHeight'] as const) {
+    if (d[key] != null) d[key] = coerceNum(d[key])
+  }
+
   if (dt === 'cartesian_grid') {
     if (!isFiniteNum(d.xMin) || !isFiniteNum(d.xMax) || !isFiniteNum(d.yMin) || !isFiniteNum(d.yMax)) return undefined
   }
   if (dt === 'number_line') {
     if (!isFiniteNum(d.min) || !isFiniteNum(d.max)) return undefined
   }
+
   // Normalise nullable arrays to empty arrays so renderers never call .map() on null/undefined
   for (const key of ['points', 'segments', 'polygons', 'shapes', 'nlPoints', 'ranges', 'bars'] as const) {
     if (d[key] == null) d[key] = []
   }
+
   // Reject diagrams with no renderable content (avoid blank boxes)
   if (dt === 'bar_chart' && (d.bars as unknown[]).length === 0) return undefined
   if (dt === 'geometric_shape') {
     const shapes = d.shapes as Record<string, unknown>[]
     if (shapes.length === 0) return undefined
-    // At least one shape must have enough data to actually render
+    // Coerce all numeric coordinate fields inside shapes so string coords become numbers
+    for (const s of shapes) {
+      for (const k of ['cx','cy','radius','x','y','width','height'] as const) {
+        if (s[k] != null) s[k] = coerceNum(s[k])
+      }
+      if (Array.isArray(s.vertices)) {
+        for (const v of s.vertices as Record<string, unknown>[]) {
+          if (v.x != null) v.x = coerceNum(v.x)
+          if (v.y != null) v.y = coerceNum(v.y)
+        }
+      }
+    }
+    // At least one shape must have valid renderable data
     const hasRenderable = shapes.some(s => {
-      if (s.kind === 'circle') return s.cx != null && s.cy != null && s.radius != null
-      if (s.kind === 'rectangle') return s.x != null && s.y != null && s.width != null && s.height != null
-      if (s.kind === 'triangle' || s.kind === 'polygon')
-        return Array.isArray(s.vertices) && (s.vertices as unknown[]).length >= 3
-      if (s.kind === 'line')
-        return Array.isArray(s.vertices) && (s.vertices as unknown[]).length >= 2
+      if (s.kind === 'circle')
+        return isFiniteNum(s.cx) && isFiniteNum(s.cy) && isFiniteNum(s.radius)
+      if (s.kind === 'rectangle')
+        return isFiniteNum(s.x) && isFiniteNum(s.y) && isFiniteNum(s.width) && isFiniteNum(s.height)
+      if (s.kind === 'triangle' || s.kind === 'polygon') {
+        if (!Array.isArray(s.vertices) || (s.vertices as unknown[]).length < 3) return false
+        return (s.vertices as Record<string, unknown>[]).every(v => isFiniteNum(v.x) && isFiniteNum(v.y))
+      }
+      if (s.kind === 'line') {
+        if (!Array.isArray(s.vertices) || (s.vertices as unknown[]).length < 2) return false
+        return (s.vertices as Record<string, unknown>[]).every(v => isFiniteNum(v.x) && isFiniteNum(v.y))
+      }
       return false
     })
     if (!hasRenderable) return undefined
