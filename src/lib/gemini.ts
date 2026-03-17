@@ -411,12 +411,15 @@ async function generateDiagramForQuestion(
   model: string,
   ai: ReturnType<typeof getAI>,
   onUsage?: UsageCallback,
+  onLog?: (msg: string) => void,
 ): Promise<DiagramSpec | undefined> {
   const optText = question.options?.length ? `\nMCQ options: ${question.options.join(' | ')}` : ''
   const ansText = question.answer ? `\nCorrect answer: ${question.answer}` : ''
   const prompt = `Generate a diagram JSON for this Cambridge IGCSE ${subject} question.
 
 QUESTION: ${question.text}${optText}${ansText}
+
+If the question says "the shape shown" or "the diagram shows" without specifying the exact shape, INVENT a suitable shape consistent with the question and answer. For example, if answer is "order 3", draw a shape with order-3 rotational symmetry (equilateral triangle). If answer is "order 4", draw a square. If the question mentions a circle with tangent, draw a circle with a tangent line. Always produce a valid diagram — never return null or skip.
 
 Pick the correct diagramType and fill in all required fields. ALL coordinate values MUST be plain integers or decimals — never null, never strings.
 
@@ -474,9 +477,14 @@ All label strings: plain text only, no LaTeX or dollar signs.`
     const usage = getGeminiUsage(response)
     if (usage) onUsage?.(model, usage.inputTokens, usage.outputTokens)
     const raw = response.text
-    if (!raw) return undefined
-    return normalizeDiagram(JSON.parse(raw))
-  } catch {
+    if (!raw) { onLog?.(`[diagram] no response text`); return undefined }
+    let parsed: unknown
+    try { parsed = JSON.parse(raw) } catch { onLog?.(`[diagram] JSON parse failed: ${raw?.slice(0,120)}`); return undefined }
+    const result = normalizeDiagram(parsed)
+    onLog?.(`[diagram] type=${(parsed as Record<string,unknown>)?.diagramType ?? '?'} → ${result ? 'OK' : 'rejected by normalizeDiagram'}`)
+    return result
+  } catch (err) {
+    onLog?.(`[diagram] API error: ${String(err).slice(0,120)}`)
     return undefined
   }
 }
@@ -668,7 +676,7 @@ DIAGRAMS (MANDATORY RULES):
   if (needsDiagram.length > 0) {
     onLog?.(`Generating diagrams for ${needsDiagram.length} question${needsDiagram.length !== 1 ? 's' : ''}…`)
     const diagrams = await Promise.all(
-      needsDiagram.map(q => generateDiagramForQuestion(q, config.subject, config.model || 'gemini-2.0-flash', ai, onUsage))
+      needsDiagram.map(q => generateDiagramForQuestion(q, config.subject, config.model || 'gemini-2.0-flash', ai, onUsage, onLog))
     )
     questions = questions.map(q => {
       const idx = needsDiagram.findIndex(nd => nd.id === q.id)
