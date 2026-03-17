@@ -211,6 +211,11 @@ function clamp(n: number, lo: number, hi: number): number {
   return Math.max(lo, Math.min(hi, n))
 }
 
+function formatBearingLabel(value: number): string {
+  const deg = ((Math.round(value) % 360) + 360) % 360
+  return `${String(deg).padStart(3, '0')}°`
+}
+
 function inferNumericAnswer(answer: string, options: string[]): number | undefined {
   const direct = answer.match(/-?\d+(?:\.\d+)?/)
   if (direct) return Number(direct[0])
@@ -238,6 +243,53 @@ function regularPolygonGeometry(sides: number): DiagramSpec {
   return { diagramType: 'geometry', points, segments } as DiagramSpec
 }
 
+function layoutGeometryPoints(names: string[]): Record<string, [number, number]> {
+  const uniq = Array.from(new Set(names)).slice(0, 12)
+  if (uniq.length === 0) return {}
+  if (uniq.length === 1) return { [uniq[0]]: [5, 5] }
+  const cx = 5, cy = 5, r = 3.8
+  const pts: Record<string, [number, number]> = {}
+  uniq.forEach((name, i) => {
+    const ang = -Math.PI / 2 + (2 * Math.PI * i) / uniq.length
+    pts[name] = [cx + r * Math.cos(ang), cy + r * Math.sin(ang)]
+  })
+  return pts
+}
+
+function tryUltraFallbackGeometry(text: string): DiagramSpec | undefined {
+  const clean = text
+    .replace(/\$+/g, '')
+    .replace(/\\[a-zA-Z]+\{([^}]*)\}/g, '$1')
+    .replace(/\\[a-zA-Z]+/g, ' ')
+
+  const linePairs = Array.from(clean.matchAll(/\b(?:line\s+)?([A-Z]{2})\b/g)).map(m => m[1].toUpperCase())
+  const angleTriples = Array.from(clean.matchAll(/\b(?:angle|∠)\s*([A-Z]{3})\b/gi)).map(m => m[1].toUpperCase())
+  const pointMentions = Array.from(clean.matchAll(/\b(?:point|town|vertex|centre|center)\s+([A-Z])\b/gi)).map(m => m[1].toUpperCase())
+
+  const namesFromPairs = linePairs.flatMap(s => s.split(''))
+  const namesFromTriples = angleTriples.flatMap(s => s.split(''))
+  const names = Array.from(new Set([...namesFromPairs, ...namesFromTriples, ...pointMentions])).slice(0, 8)
+  if (names.length < 2) return undefined
+
+  const points = layoutGeometryPoints(names)
+  const segments = (linePairs.length >= 1 ? linePairs : names.slice(0, 3).map((_, i, arr) => `${arr[i]}${arr[(i + 1) % arr.length]}`))
+    .slice(0, 8)
+    .filter(s => s.length === 2 && points[s[0]] && points[s[1]])
+    .map(s => ({ from: s[0], to: s[1] }))
+
+  const primaryAngle = angleTriples[0]
+  const angles = primaryAngle && points[primaryAngle[1]] && points[primaryAngle[0]] && points[primaryAngle[2]]
+    ? [{ at: primaryAngle[1], between: [primaryAngle[0], primaryAngle[2]] as [string, string], label: 'x' }]
+    : undefined
+
+  return {
+    diagramType: 'geometry',
+    points,
+    ...(segments.length > 0 ? { segments } : {}),
+    ...(angles ? { angles } : {}),
+  } as DiagramSpec
+}
+
 /** Build a simple geometry diagram from common angle/triangle phrasings so
  *  diagram-referenced questions remain answerable even when provider omits diagram JSON. */
 function tryAutoGeometryFromText(text: string, answer = '', options: string[] = []): DiagramSpec | undefined {
@@ -260,6 +312,35 @@ function tryAutoGeometryFromText(text: string, answer = '', options: string[] = 
       return regularPolygonGeometry(inferredOrder)
     }
     return regularPolygonGeometry(4)
+  }
+
+  // Pattern: "The bearing of town B from town A is 055°"
+  const bearingMatch = clean.match(/\bbearing of (?:town|point)?\s*([A-Z])\s+from (?:town|point)?\s*([A-Z])\s+is\s*(\d{2,3})\s*°?/i)
+  if (bearingMatch) {
+    const toPoint = bearingMatch[1].toUpperCase()
+    const fromPoint = bearingMatch[2].toUpperCase()
+    const bearing = clamp(Number(bearingMatch[3]), 0, 359)
+    const theta = (bearing * Math.PI) / 180
+
+    const ax = 4.2, ay = 4.3
+    const bx = clamp(ax + 3.2 * Math.sin(theta), 0.8, 9.2)
+    const by = clamp(ay + 3.2 * Math.cos(theta), 0.8, 9.2)
+
+    const points: Record<string, [number, number]> = {
+      [fromPoint]: [ax, ay],
+      [toPoint]: [bx, by],
+      N: [ax, 8.8],
+    }
+
+    return {
+      diagramType: 'geometry',
+      points,
+      segments: [
+        { from: fromPoint, to: 'N', dashed: true },
+        { from: fromPoint, to: toPoint },
+      ],
+      angles: [{ at: fromPoint, between: ['N', toPoint], label: formatBearingLabel(bearing) }],
+    } as DiagramSpec
   }
 
   const straightAngle = clean.match(/\b([A-Z])([A-Z])\s+is a straight line\b[\s\S]*?\b([A-Z])\s+is a point on\s+([A-Z])([A-Z])\b[\s\S]*?(?:∠|angle)\s*([A-Z]{3})\s*=\s*(\d+(?:\.\d+)?)\s*°?/i)
@@ -385,11 +466,11 @@ function tryAutoGeometryFromText(text: string, answer = '', options: string[] = 
     } as DiagramSpec
   }
 
-  const parallelLines = clean.match(/\bline\s+([A-Z]{2})\s+is parallel to\s+line\s+([A-Z]{2})\b/i)
+  const parallelLines = clean.match(/\b(?:line\s+)?([A-Z]{2})\s+is parallel to\s+(?:line\s+)?([A-Z]{2})\b/i)
   if (parallelLines) {
     const l1 = parallelLines[1].toUpperCase()
     const l2 = parallelLines[2].toUpperCase()
-    const t = clean.match(/\bline\s+([A-Z]{2})\s+(?:is\s+)?(?:a\s+)?(?:transversal|straight line)\b/i)?.[1]?.toUpperCase()
+    const t = clean.match(/\b(?:line\s+)?([A-Z]{2})\s+(?:is\s+)?(?:a\s+)?(?:transversal|straight line)\b/i)?.[1]?.toUpperCase()
 
     const [a, b] = l1.split('')
     const [c, d] = l2.split('')
@@ -443,7 +524,40 @@ function tryAutoGeometryFromText(text: string, answer = '', options: string[] = 
     } as DiagramSpec
   }
 
-  return undefined
+  // Generic fallback: build a valid geometry diagram from named segments/angles.
+  const rawPairs = Array.from(clean.matchAll(/\b([A-Z]{2})\b/g)).map(m => m[1].toUpperCase())
+  const segmentCodes = Array.from(new Set(rawPairs.filter(p => p.length === 2))).slice(0, 8)
+  if (segmentCodes.length >= 2) {
+    const pointNames = segmentCodes.flatMap(s => s.split(''))
+    const points = layoutGeometryPoints(pointNames)
+    const segments = segmentCodes
+      .filter(s => points[s[0]] && points[s[1]])
+      .map(s => ({ from: s[0], to: s[1] }))
+
+    const parallelMatch = clean.match(/\b(?:line\s+)?([A-Z]{2})\s+is parallel to\s+(?:line\s+)?([A-Z]{2})\b/i)
+    const parallel = parallelMatch
+      ? [[parallelMatch[1].toUpperCase(), parallelMatch[2].toUpperCase()] as [string, string]]
+      : undefined
+
+    const angleMatch = clean.match(/\b(?:angle|∠)\s*([A-Z]{3})\s*(?:=|is)?\s*(\d+(?:\.\d+)?)?\s*°?/i)
+    const angles = angleMatch && points[angleMatch[1][1]] && points[angleMatch[1][0]] && points[angleMatch[1][2]]
+      ? [{
+        at: angleMatch[1][1].toUpperCase(),
+        between: [angleMatch[1][0].toUpperCase(), angleMatch[1][2].toUpperCase()] as [string, string],
+        label: angleMatch[2] ? `${clamp(Number(angleMatch[2]), 1, 359)}°` : 'x',
+      }]
+      : undefined
+
+    return {
+      diagramType: 'geometry',
+      points,
+      segments,
+      ...(parallel ? { parallel } : {}),
+      ...(angles ? { angles } : {}),
+    } as DiagramSpec
+  }
+
+  return tryUltraFallbackGeometry(clean)
 }
 
 const SUBJECT_CODES: Record<string, string> = {
@@ -499,7 +613,7 @@ export function sanitizeQuestion(q: any): Omit<QuestionItem, 'id'> {
   const assessmentObjective = (['AO1', 'AO2', 'AO3'] as const).find(ao => aoRaw.includes(ao))
 
   const normalizedText = normalizeSvgMarkdown(text)
-  const referencesDiagram = /\b(in the diagram|the diagram shows|refer to the diagram|as shown in the diagram|from the diagram|on the diagram|shown on the (grid|diagram|figure|graph)|the (grid|figure|graph) shows|shown in the (figure|graph|grid)|as shown (below|above)|on the (grid|graph) (below|above|shown)|shown on a (grid|graph)|coordinates? (?:of|shown)|point [A-Z] shown|in the (triangle|circle|polygon|quadrilateral|rectangle|trapezium|parallelogram)|the (triangle|circle|polygon|quadrilateral) [A-Z]{2,}|angle [A-Z]{2,3}\s*=|triangle [A-Z]{3})\b/i.test(normalizedText)
+  const referencesDiagram = /\b(in the diagram|the diagram shows|refer to the diagram|as shown in the diagram|from the diagram|on the diagram|shown on the (grid|diagram|figure|graph)|the (grid|figure|graph) shows|shown in the (figure|graph|grid)|as shown (below|above)|on the (grid|graph) (below|above|shown)|shown on a (grid|graph)|coordinates? (?:of|shown)|point [A-Z] shown|in the (triangle|circle|polygon|quadrilateral|rectangle|trapezium|parallelogram)|the (triangle|circle|polygon|quadrilateral) [A-Z]{2,}|angle [A-Z]{2,3}\s*=|triangle [A-Z]{3}|bearing of|three-figure bearings?|is parallel to|transversal|straight line|tangent|centre of the circle|center of the circle|rotational symmetry|line symmetry|shape shown)\b/i.test(normalizedText)
   const rawDiagram = normalizeDiagram(q.diagram)
 
   // Auto-generate a cartesian_grid when the model didn't provide one.
