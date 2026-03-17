@@ -138,7 +138,7 @@ export function useResources(user: User | null, notify: NotifyFn) {
       const ai = new GoogleGenAI({ apiKey })
       const response = await withTimeout(
         ai.models.generateContent({
-          model: 'gemini-2.5-flash',
+          model: 'gemini-2.5-pro',
           contents: {
             parts: [
               { inlineData: { mimeType: resource.mimeType, data: base64 } },
@@ -211,7 +211,7 @@ Be thorough — include every numbered objective. Do not skip any.` },
       const ai = new GoogleGenAI({ apiKey })
       const response = await withTimeout(
         ai.models.generateContent({
-          model: 'gemini-2.5-flash',
+          model: 'gemini-2.5-pro',
           contents: {
             parts: [
               { inlineData: { mimeType: resource.mimeType, data: base64 } },

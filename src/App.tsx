@@ -424,6 +424,10 @@ export default function App() {
         knowledgeBase={resources.knowledgeBase}
         onUploadResource={(file, subject, resourceType) => {
           const geminiKey = apiKeys['gemini']
+          const isPdf = (resourceType === 'syllabus' || resourceType === 'past_paper')
+          if (isPdf && !geminiKey) {
+            notify('A Gemini API key is required to extract and cache PDF content. Add your free key in API Settings → Google Gemini.', 'error')
+          }
           resources.uploadResource(file, subject, resourceType).then(resource => {
             if (resource && resourceType === 'syllabus' && geminiKey) {
               resources.processSyllabus(resource, geminiKey)
@@ -436,6 +440,10 @@ export default function App() {
         onAddToKB={(resource) => {
           resources.addToKnowledgeBase(resource)
           const geminiKey = apiKeys['gemini']
+          const isPdf = (resource.resourceType === 'past_paper' || resource.resourceType === 'syllabus')
+          if (isPdf && !geminiKey) {
+            notify('A Gemini API key is required to extract PDF content for use as a reference. Add your free key in API Settings → Google Gemini.', 'error')
+          }
           if (resource.resourceType === 'past_paper' && geminiKey) {
             resources.processPastPaper(resource, geminiKey)
           }
