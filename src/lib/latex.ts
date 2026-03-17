@@ -25,6 +25,12 @@ export function preprocessLatex(text: string): string {
   // produced by some model outputs; this avoids KaTeX parse errors.
   result = result.replace(/(\\[A-Za-z]+)\s*\$\$\s*(\\[A-Za-z]+)/g, '$1 $2')
 
+  // Step 0.6: fix common model LaTeX typos before POWER_RE runs
+  // ^{circ} without backslash → ^{\circ}  (model drops the backslash)
+  result = result.replace(/\^\{circ\}/g, '^{\\circ}')
+  // ^ ext{...} → ^{\text{...}}  (model writes "ext" instead of "\text")
+  result = result.replace(/\^ ?ext\{([^}]*)\}/g, '^{\\text{$1}}')
+
   // Step 1: merge accidentally split adjacent math blocks
   result = result.replace(/\$([^$\n]+?)\$\$([^$\n]+?)\$/g, (_m, a, b) => `$${a}${b}$`)
 

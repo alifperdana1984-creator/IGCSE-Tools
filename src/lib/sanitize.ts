@@ -20,8 +20,22 @@ function normalizeDiagram(raw: unknown): DiagramSpec | undefined {
     if (d[key] == null) d[key] = []
   }
   // Reject diagrams with no renderable content (avoid blank boxes)
-  if (dt === 'geometric_shape' && (d.shapes as unknown[]).length === 0) return undefined
   if (dt === 'bar_chart' && (d.bars as unknown[]).length === 0) return undefined
+  if (dt === 'geometric_shape') {
+    const shapes = d.shapes as Record<string, unknown>[]
+    if (shapes.length === 0) return undefined
+    // At least one shape must have enough data to actually render
+    const hasRenderable = shapes.some(s => {
+      if (s.kind === 'circle') return s.cx != null && s.cy != null && s.radius != null
+      if (s.kind === 'rectangle') return s.x != null && s.y != null && s.width != null && s.height != null
+      if (s.kind === 'triangle' || s.kind === 'polygon')
+        return Array.isArray(s.vertices) && (s.vertices as unknown[]).length >= 3
+      if (s.kind === 'line')
+        return Array.isArray(s.vertices) && (s.vertices as unknown[]).length >= 2
+      return false
+    })
+    if (!hasRenderable) return undefined
+  }
   return raw as DiagramSpec
 }
 
