@@ -2,8 +2,9 @@ import React from 'react'
 import type {
   DiagramSpec, CartesianGridSpec, GeometricShapeSpec, NumberLineSpec, BarChartSpec, GeometryDiagramSpec,
   CircleTheoremSpec, ScienceGraphSpec, GeneticDiagramSpec, EnergyLevelDiagramSpec,
-  FoodWebSpec, EnergyPyramidSpec, FlowchartSpec,
+  FoodWebSpec, EnergyPyramidSpec, FlowchartSpec, SvgTemplateSpec,
 } from '../../lib/types'
+import { SVG_TEMPLATES } from '../../lib/svgTemplates'
 
 // ── CartesianGrid ────────────────────────────────────────────────────────────
 
@@ -1204,10 +1205,66 @@ function FlowchartDiagram({ spec }: { spec: FlowchartSpec }) {
   )
 }
 
+// ── SvgTemplate ──────────────────────────────────────────────────────────────
+
+function SvgTemplateDiagram({ spec }: { spec: SvgTemplateSpec }) {
+  const template = SVG_TEMPLATES[spec.templateId]
+  if (!template) {
+    return (
+      <div style={{ padding: '16px', color: '#6B7280', fontSize: '13px', border: '1px dashed #D1D5DB', borderRadius: '8px' }}>
+        Unknown template: {spec.templateId}
+      </div>
+    )
+  }
+
+  const labels = spec.labels ?? []
+  const LINE_LEN = 8  // short tick at label end
+
+  return (
+    <svg viewBox={template.viewBox} width="100%" style={{ maxWidth: 560, display: 'block' }}>
+      <g dangerouslySetInnerHTML={{ __html: template.svgContent }} />
+      {labels.map((label, i) => {
+        const anchor = template.anchors[label.anchorId]
+        if (!anchor) return null
+        const { px, py, lx, ly, textAnchor = 'middle' } = anchor
+        // Compute a short end-tick perpendicular to the label line
+        const dx = lx - px, dy = ly - py
+        const len = Math.sqrt(dx * dx + dy * dy) || 1
+        const nx = -dy / len, ny = dx / len  // normal
+        const tx = nx * LINE_LEN, ty = ny * LINE_LEN
+        return (
+          <g key={i}>
+            <circle cx={px} cy={py} r="3" fill="#1F2937"/>
+            <line x1={px} y1={py} x2={lx} y2={ly} stroke="#1F2937" strokeWidth="1.2"/>
+            <line
+              x1={lx - tx} y1={ly - ty}
+              x2={lx + tx} y2={ly + ty}
+              stroke="#1F2937" strokeWidth="1.2"
+            />
+            <text
+              x={lx}
+              y={ly}
+              fontSize="12"
+              textAnchor={textAnchor}
+              dominantBaseline="auto"
+              dy={textAnchor === 'middle' ? (ly < py ? '-4' : '14') : '4'}
+              fill="#111827"
+              fontFamily="sans-serif"
+            >
+              {label.text}
+            </text>
+          </g>
+        )
+      })}
+    </svg>
+  )
+}
+
 // ── Main export ──────────────────────────────────────────────────────────────
 
 export function DiagramRenderer({ spec }: { spec: DiagramSpec | undefined | null }) {
   if (!spec) return null
+  if (spec.diagramType === 'svg_template') return <SvgTemplateDiagram spec={spec as SvgTemplateSpec} />
   return (
     <div className="my-3 border-t-2 border-b-2 border-violet-100 py-3 bg-violet-50/30 rounded-sm">
       <p className="text-xs font-semibold text-violet-400 mb-2 flex items-center gap-1.5 px-1">

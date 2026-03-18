@@ -146,7 +146,16 @@ export interface FlowchartSpec {
   hiddenNodes?: string[]
 }
 
-export type DiagramSpec = CartesianGridSpec | GeometricShapeSpec | NumberLineSpec | BarChartSpec | GeometryDiagramSpec | CircleTheoremSpec | ScienceGraphSpec | GeneticDiagramSpec | EnergyLevelDiagramSpec | FoodWebSpec | EnergyPyramidSpec | FlowchartSpec
+/** Layer 2 — pre-drawn SVG template with AI-specified labels at predefined anchor points. */
+export interface SvgTemplateSpec {
+  diagramType: 'svg_template'
+  /** Template ID matching a key in SVG_TEMPLATES */
+  templateId: string
+  /** Labels to show — each references a named anchor on the template */
+  labels?: Array<{ anchorId: string; text: string }>
+}
+
+export type DiagramSpec = CartesianGridSpec | GeometricShapeSpec | NumberLineSpec | BarChartSpec | GeometryDiagramSpec | CircleTheoremSpec | ScienceGraphSpec | GeneticDiagramSpec | EnergyLevelDiagramSpec | FoodWebSpec | EnergyPyramidSpec | FlowchartSpec | SvgTemplateSpec
 
 // ────────────────────────────────────────────────────────────────────────────
 

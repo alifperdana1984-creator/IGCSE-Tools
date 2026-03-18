@@ -1,10 +1,11 @@
 import type { QuestionItem, DiagramSpec } from './types'
 import { normalizeSvgMarkdown } from './svg'
+import { SVG_TEMPLATES } from './svgTemplates'
 
 const KNOWN_DIAGRAM_TYPES = new Set([
   'cartesian_grid', 'geometric_shape', 'number_line', 'bar_chart', 'geometry',
   'circle_theorem', 'science_graph', 'genetic_diagram', 'energy_level_diagram',
-  'food_web', 'energy_pyramid', 'flowchart',
+  'food_web', 'energy_pyramid', 'flowchart', 'svg_template',
 ])
 
 export function normalizeDiagram(raw: unknown): DiagramSpec | undefined {
@@ -213,6 +214,21 @@ export function normalizeDiagram(raw: unknown): DiagramSpec | undefined {
   if (dt === 'flowchart') {
     if (!Array.isArray(d.nodes) || (d.nodes as unknown[]).length === 0) return undefined
     if (!Array.isArray(d.connections)) d.connections = []
+  }
+
+  if (dt === 'svg_template') {
+    if (!d.templateId || !SVG_TEMPLATES[d.templateId as string]) return undefined
+    // Normalize svgLabels (flat Gemini field) → labels
+    if (Array.isArray(d.svgLabels) && !Array.isArray(d.labels)) {
+      d.labels = d.svgLabels
+      delete d.svgLabels
+    }
+    if (!Array.isArray(d.labels)) d.labels = []
+    // Validate anchor IDs against template
+    const template = SVG_TEMPLATES[d.templateId as string]
+    d.labels = (d.labels as Array<Record<string, unknown>>).filter(
+      l => l.anchorId && template.anchors[l.anchorId as string]
+    )
   }
 
   return raw as DiagramSpec

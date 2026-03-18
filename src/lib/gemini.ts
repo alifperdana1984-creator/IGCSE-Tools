@@ -442,6 +442,9 @@ const DIAGRAM_SCHEMA = {
     nodes:               { type: Type.ARRAY, nullable: true, items: { type: Type.OBJECT } },
     connections:         { type: Type.ARRAY, nullable: true, items: { type: Type.OBJECT } },
     hiddenNodes:         { type: Type.ARRAY, nullable: true, items: { type: Type.STRING } },
+    // svg_template (Layer 2)
+    templateId:   { type: Type.STRING, nullable: true },
+    svgLabels:    { type: Type.ARRAY, nullable: true, items: { type: Type.OBJECT } },
   },
 }
 
@@ -491,6 +494,17 @@ CHEMISTRY types:
 • "energy_level_diagram" — reactionType:"exothermic"|"endothermic". reactants:{label,energyLevel}, products:{label,energyLevel}. activationEnergy:{peak,label} (peak > both levels). energyChange:{label:"ΔH = ..."}. showCatalystPath:false.
   Example: {"diagramType":"energy_level_diagram","reactionType":"exothermic","reactants":{"label":"Reactants","energyLevel":80},"products":{"label":"Products","energyLevel":20},"activationEnergy":{"peak":120,"label":"Ea"},"energyChange":{"label":"ΔH = –500 kJ/mol"},"showCatalystPath":false}
 • "science_graph" — also for Chemistry rate/heating/pH curves. Same format as Biology.
+
+BIOLOGY & CHEMISTRY — structural diagrams (use svg_template when question asks to label a cell, apparatus, or biological structure):
+• "svg_template" — pre-drawn diagram selected by templateId. svgLabels:[{anchorId,text}] where anchorId must match template anchors exactly.
+  Available templates and their valid anchorIds:
+  - "bio/animal_cell" → anchorIds: cell_membrane, nucleus, nuclear_membrane, nucleolus, mitochondrion, golgi_apparatus, rough_er, ribosome, lysosome, vacuole, cytoplasm
+  - "bio/plant_cell" → anchorIds: cell_wall, cell_membrane, nucleus, nucleolus, chloroplast, central_vacuole, tonoplast, mitochondrion, golgi_apparatus, cytoplasm
+  - "bio/leaf_cross_section" → anchorIds: upper_epidermis, cuticle, palisade_mesophyll, chloroplast, spongy_mesophyll, air_space, lower_epidermis, guard_cell, stoma, xylem, phloem, vascular_bundle
+  - "chem/electrolysis" → anchorIds: beaker, electrolyte, cathode, anode, negative_electrode, positive_electrode, power_supply, gas_at_cathode, gas_at_anode
+  - "chem/simple_distillation" → anchorIds: flask, liquid, thermometer, condenser, water_in, water_out, collecting_flask, distillate, heat
+  Example: {"diagramType":"svg_template","templateId":"bio/animal_cell","svgLabels":[{"anchorId":"nucleus","text":"Nucleus"},{"anchorId":"mitochondrion","text":"Mitochondrion"},{"anchorId":"cell_membrane","text":"Cell surface membrane"}]}
+  IMPORTANT: Only use anchorIds listed above for the chosen template. Never invent new anchorIds.
 
 All label strings: plain text only, no LaTeX or dollar signs.`
 
@@ -558,6 +572,8 @@ All label strings: plain text only, no LaTeX or dollar signs.`
             nodes:     { type: Type.ARRAY, nullable: true, items: { type: Type.OBJECT } },
             connections: { type: Type.ARRAY, nullable: true, items: { type: Type.OBJECT } },
             hiddenNodes: { type: Type.ARRAY, nullable: true, items: { type: Type.STRING } },
+            templateId: { type: Type.STRING, nullable: true },
+            svgLabels:  { type: Type.ARRAY, nullable: true, items: { type: Type.OBJECT } },
           },
           required: ['diagramType'],
         },
@@ -688,10 +704,21 @@ GENERATION RULES:
      CRITICAL: exothermic → products.energyLevel < reactants.energyLevel. Endothermic → products.energyLevel > reactants.energyLevel. activationEnergy.peak > max(reactants,products) always.
      Example (exothermic): {"diagramType":"energy_level_diagram","reactionType":"exothermic","reactants":{"label":"CH₄ + 2O₂","energyLevel":80},"products":{"label":"CO₂ + 2H₂O","energyLevel":20},"activationEnergy":{"peak":120,"label":"Ea"},"energyChange":{"label":"ΔH = –890 kJ/mol"},"showCatalystPath":false}
 
+   BIOLOGY & CHEMISTRY — structural diagrams (use svg_template when question asks to label a cell, apparatus, or biological structure):
+   • "svg_template" — pre-drawn diagram selected by templateId. svgLabels:[{anchorId,text}] where anchorId must match template anchors exactly.
+     Available templates and their valid anchorIds:
+     - "bio/animal_cell" → anchorIds: cell_membrane, nucleus, nuclear_membrane, nucleolus, mitochondrion, golgi_apparatus, rough_er, ribosome, lysosome, vacuole, cytoplasm
+     - "bio/plant_cell" → anchorIds: cell_wall, cell_membrane, nucleus, nucleolus, chloroplast, central_vacuole, tonoplast, mitochondrion, golgi_apparatus, cytoplasm
+     - "bio/leaf_cross_section" → anchorIds: upper_epidermis, cuticle, palisade_mesophyll, chloroplast, spongy_mesophyll, air_space, lower_epidermis, guard_cell, stoma, xylem, phloem, vascular_bundle
+     - "chem/electrolysis" → anchorIds: beaker, electrolyte, cathode, anode, negative_electrode, positive_electrode, power_supply, gas_at_cathode, gas_at_anode
+     - "chem/simple_distillation" → anchorIds: flask, liquid, thermometer, condenser, water_in, water_out, collecting_flask, distillate, heat
+     Example: {"diagramType":"svg_template","templateId":"bio/animal_cell","svgLabels":[{"anchorId":"nucleus","text":"Nucleus"},{"anchorId":"mitochondrion","text":"Mitochondrion"},{"anchorId":"cell_membrane","text":"Cell surface membrane"}]}
+     IMPORTANT: Only use anchorIds listed above for the chosen template. Never invent new anchorIds.
+
    SUBJECT-SPECIFIC DIAGRAM SELECTION RULES:
    - Mathematics: Use geometry/circle_theorem/cartesian_grid for visual problems. NEVER use science_graph for math.
-   - Biology: Use science_graph for data/rate questions, genetic_diagram for genetics, food_web for ecology, energy_pyramid for pyramids, flowchart for dichotomous keys. Use geometry only if the question is about geometric shapes.
-   - Chemistry: Use energy_level_diagram for energetics, science_graph for rate/heating/solubility curves. Use geometry only if explicitly needed (e.g. crystal structure diagrams).
+   - Biology: Use svg_template for cell labelling and structural diagrams. Use science_graph for data/rate questions, genetic_diagram for genetics, food_web for ecology, energy_pyramid for pyramids, flowchart for dichotomous keys. Use geometry only if the question is about geometric shapes.
+   - Chemistry: Use svg_template for apparatus labelling (electrolysis, distillation). Use energy_level_diagram for energetics, science_graph for rate/heating/solubility curves. Use geometry only if explicitly needed (e.g. crystal structure diagrams).
 
    CRITICAL DIAGRAM RULES — mandatory:
    • If hasDiagram=true, the "diagram" field MUST be a complete non-null object. NEVER output hasDiagram=true with diagram=null.
