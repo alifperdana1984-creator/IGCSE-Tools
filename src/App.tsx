@@ -376,8 +376,10 @@ export default function App() {
 
   const handleRegenerateDiagrams = useCallback(async (questions: QuestionItem[]) => {
     if (!questions.length) return
-    if (!currentApiKey) {
-      notify('Diagram regenerate requires an API key. Open API Settings and add your key.', 'error')
+    // Diagram generation always uses Gemini regardless of the selected provider
+    const geminiKey = apiKeys['gemini']
+    if (!geminiKey) {
+      notify('Diagram generation requires a Gemini API key. Open API Settings → Google Gemini and add your free key.', 'error')
       setApiSettingsOpen(true)
       return
     }
@@ -387,8 +389,8 @@ export default function App() {
       const regenerated = await regenerateDiagramsForQuestions(
         questions.map(repairQuestionItem),
         assessment.subject,
-        customModel.trim() || config.model || DEFAULT_MODELS['gemini'],
-        currentApiKey,
+        customModel.trim() || DEFAULT_MODELS['gemini'],
+        geminiKey,
       )
       if (!regenerated.length) {
         notify('Diagram regenerate could not produce a valid diagram for this question.', 'error')
