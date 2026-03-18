@@ -124,6 +124,12 @@ export function normalizeDiagram(raw: unknown): DiagramSpec | undefined {
       if (hasOrphanParallel) return undefined
     }
 
+    // Reject trivially simple geometry: ≤2 points with no angle labels is just a line segment —
+    // not useful as a diagram. Let the text-based fallback generate something meaningful.
+    const ptCount = Object.keys(d.points as Record<string, unknown>).length
+    const angCount = Array.isArray(d.angles) ? (d.angles as unknown[]).length : 0
+    if (ptCount < 3 && angCount === 0) return undefined
+
     return raw as DiagramSpec
   }
   if (dt === 'geometric_shape') {
@@ -567,6 +573,35 @@ function tryAutoGeometryFromText(text: string, answer = '', options: string[] = 
     } as DiagramSpec
   }
 
+  // Pattern: Generic "straight line … angle of X°" — e.g. "A straight line has an angle of 55° on one side."
+  // Generates a horizontal line A-B-C with ray BP and both angles labeled.
+  if (/\bstraight\s+line\b/i.test(clean)) {
+    const degMatch = clean.match(/\b(\d+(?:\.\d+)?)\s*°/)
+    if (degMatch) {
+      const angleValue = clamp(Number(degMatch[1]), 10, 170)
+      const rad = (Math.PI * (180 - angleValue)) / 180
+      const dx = 3 * Math.cos(rad)
+      const dy = 3 * Math.sin(rad)
+      return {
+        diagramType: 'geometry',
+        points: {
+          A: [1.5, 5],
+          B: [5, 5],
+          C: [8.5, 5],
+          P: [clamp(5 + dx, 0.5, 9.5), clamp(5 + dy, 0.5, 9.5)],
+        },
+        segments: [
+          { from: 'A', to: 'C' },
+          { from: 'B', to: 'P' },
+        ],
+        angles: [
+          { at: 'B', between: ['A', 'P'], label: `${angleValue}°` },
+          { at: 'B', between: ['P', 'C'], label: 'x' },
+        ],
+      } as DiagramSpec
+    }
+  }
+
   // Pattern: "∠ACD = 110°" (or "angle ACD = 110")
   const namedAngle = clean.match(/(?:∠|angle)\s*([A-Z]{3})\s*=\s*(\d+(?:\.\d+)?)\s*°?/i)
   if (namedAngle) {
@@ -790,6 +825,13 @@ function tryAutoGeometryFromText(text: string, answer = '', options: string[] = 
   }
 
   return tryUltraFallbackGeometry(clean)
+}
+
+/** Public entry-point for text-based diagram generation (used as fallback in regenerate flow). */
+export function generateDiagramFromText(text: string, answer = '', options: string[] = []): DiagramSpec | undefined {
+  return tryAutoCartesianFromText(text)
+    ?? tryAutoGeometryFromText(text, answer, options)
+    ?? undefined
 }
 
 const SUBJECT_CODES: Record<string, string> = {

@@ -2,7 +2,7 @@ import { GoogleGenAI, Type } from "@google/genai";
 import type { QuestionItem, DiagramSpec, Assessment, AnalyzeFileResult, GenerationConfig, GeminiError } from './types'
 import type { Reference } from './ai'
 import type { UsageCallback } from './ai'
-import { sanitizeQuestion, normalizeDiagram, generateQuestionCode as sharedGenerateQuestionCode } from './sanitize'
+import { sanitizeQuestion, normalizeDiagram, generateDiagramFromText, generateQuestionCode as sharedGenerateQuestionCode } from './sanitize'
 import { parseJsonWithRecovery } from './json'
 
 function getAI(apiKey?: string) {
@@ -470,7 +470,9 @@ Pick the correct diagramType and fill in all required fields. ALL coordinate val
 
 MATHEMATICS types:
 • "geometry" — PREFERRED for geometry/triangle/angle/parallel-lines. points:[{name,x,y}] 0-10. segments:[{from,to,label?}]. angles:[{at,between:[p1,p2],label}]. parallel:[{seg1,seg2}]. perpendicular:[{seg1,seg2}].
+  IMPORTANT: Always include at least 3 points and label angles where relevant. A bare 2-point segment is NOT a valid diagram.
   Example right triangle: {"diagramType":"geometry","points":[{"name":"A","x":1,"y":1},{"name":"B","x":1,"y":7},{"name":"C","x":9,"y":1}],"segments":[{"from":"A","to":"B","label":"8 cm"},{"from":"B","to":"C","label":"6 cm"},{"from":"A","to":"C"}],"perpendicular":[{"seg1":"AB","seg2":"BC"}]}
+  Example straight-line angles: {"diagramType":"geometry","points":[{"name":"A","x":1,"y":5},{"name":"B","x":5,"y":5},{"name":"C","x":9,"y":5},{"name":"P","x":3,"y":8}],"segments":[{"from":"A","to":"C"},{"from":"B","to":"P"}],"angles":[{"at":"B","between":["A","P"],"label":"55°"},{"at":"B","between":["P","C"],"label":"x"}]}
 • "circle_theorem" — circle with named points, chords, radii, angles. centre:{id:"O"}. pointsOnCircumference:[{id,angleDegrees}] (0°=right,90°=top). chords:[{s1,s2}]. radii:[{s1,s2}]. angles:[{vertex,rays:[p1,p2],label}].
   Example: {"diagramType":"circle_theorem","centre":{"id":"O"},"pointsOnCircumference":[{"id":"A","angleDegrees":20},{"id":"B","angleDegrees":144},{"id":"C","angleDegrees":260}],"radii":[{"s1":"O","s2":"A"},{"s1":"O","s2":"B"}],"chords":[{"s1":"A","s2":"C"},{"s1":"B","s2":"C"}],"angles":[{"vertex":"O","rays":["A","B"],"label":"124°"},{"vertex":"C","rays":["A","B"],"label":"x"}]}
 • "cartesian_grid" — xMin,xMax,yMin,yMax,gridStep. points:[{label,x,y}]. segments:[{x1,y1,x2,y2}].
@@ -586,8 +588,15 @@ All label strings: plain text only, no LaTeX or dollar signs.`
     let parsed: unknown
     try { parsed = JSON.parse(raw) } catch { onLog?.(`[diagram] JSON parse failed: ${raw?.slice(0,120)}`); return undefined }
     const result = normalizeDiagram(parsed)
-    onLog?.(`[diagram] type=${(parsed as Record<string,unknown>)?.diagramType ?? '?'} → ${result ? 'OK' : 'rejected by normalizeDiagram'}`)
-    return result
+    const diagramType = (parsed as Record<string,unknown>)?.diagramType ?? '?'
+    if (result) {
+      onLog?.(`[diagram] type=${diagramType} → OK`)
+      return result
+    }
+    // AI diagram rejected — try text-based fallback (geometry/cartesian patterns)
+    const fallback = generateDiagramFromText(question.text, question.answer, question.options ?? [])
+    onLog?.(`[diagram] type=${diagramType} → rejected; text-fallback=${fallback ? 'OK' : 'none'}`)
+    return fallback
   } catch (err) {
     onLog?.(`[diagram] API error: ${String(err).slice(0,120)}`)
     return undefined
