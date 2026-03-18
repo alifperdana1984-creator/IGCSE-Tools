@@ -870,6 +870,28 @@ function hasMcqLabelsInText(text: string): boolean {
   return /^\s*A[).:\-]\s+/mi.test(text) && /^\s*D[).:\-]\s+/mi.test(text)
 }
 
+/**
+ * Normalises LaTeX math delimiters in an MCQ option string.
+ * AI sometimes wraps options in $$...$$ (display math) which breaks inline rendering.
+ * Converts display math to inline math, and ensures lone LaTeX commands are wrapped.
+ */
+function normalizeOptionMath(opt: string): string {
+  let s = opt.trim()
+  // Strip surrounding $$ ... $$
+  s = s.replace(/^\$\$(.+?)\$\$$/s, '$1').trim()
+  // Strip surrounding $ ... $
+  s = s.replace(/^\$(.+?)\$$/s, '$1').trim()
+  // If the content contains LaTeX commands (\circ, \frac, \times, etc.) wrap in $...$
+  if (/\\[a-zA-Z]/.test(s) || /\^|_/.test(s)) {
+    // Already has inline math wrapper somewhere — just ensure it's tidy
+    // Replace any $$ with $ to prevent display math breaking the line
+    s = s.replace(/\$\$/g, '$')
+    // If not already wrapped in math, wrap entirely
+    if (!s.startsWith('$')) s = `$${s}$`
+  }
+  return s
+}
+
 /** Normalise a raw AI-generated question object into a typed QuestionItem (minus id). */
 export function sanitizeQuestion(q: any): Omit<QuestionItem, 'id'> {
   const fix = (s: string) => (s ?? '').replace(/\\n/g, '\n')
@@ -889,7 +911,7 @@ export function sanitizeQuestion(q: any): Omit<QuestionItem, 'id'> {
   if (type === 'mcq' && options.length === 4 && !hasMcqLabelsInText(text)) {
     const letters = ['A', 'B', 'C', 'D']
     const optLines = options
-      .map((opt: string, i: number) => `${letters[i]}) ${opt}`)
+      .map((opt: string, i: number) => `${letters[i]}) ${normalizeOptionMath(opt)}`)
       .join('\n\n')
     text = `${text}\n\n${optLines}`
   }
