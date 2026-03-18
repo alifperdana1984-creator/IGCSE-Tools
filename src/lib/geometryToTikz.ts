@@ -132,7 +132,7 @@ export function geometryToTikz(spec: GeometryDiagramSpec): string {
   const labels = spec.labels ?? []
 
   const lines: string[] = []
-  lines.push('\\begin{tikzpicture}[font=\\small]')
+  lines.push('\\begin{tikzpicture}')
 
   // ── Segments (numeric coords only — no named node references) ────────────
   for (const seg of segs) {
@@ -147,7 +147,7 @@ export function geometryToTikz(spec: GeometryDiagramSpec): string {
       const [mx, my] = mid([fx, fy], [tx2, ty2])
       const [nx, ny] = unit(-(ty2 - fy), tx2 - fx) // left-hand perpendicular
       const lx = mx + nx * 0.38, ly = my + ny * 0.38
-      lines.push(`  \\node[font=\\scriptsize] at ${tpt(lx, ly)} {${seg.label}};`)
+      lines.push(`  \\node at ${tpt(lx, ly)} {${seg.label}};`)
     }
   }
 
@@ -226,14 +226,14 @@ export function geometryToTikz(spec: GeometryDiagramSpec): string {
     const labelR = 0.68 / S   // geometry units
     const lx = at[0] + Math.cos(bisector) * labelR
     const ly = at[1] + Math.sin(bisector) * labelR
-    lines.push(`  \\node[font=\\scriptsize] at ${tpt(lx, ly)} {$${fmtAngleLabel(angle.label)}$};`)
+    lines.push(`  \\node at ${tpt(lx, ly)} {$${fmtAngleLabel(angle.label)}$};`)
   }
 
   // ── Point dots + labels (numeric coords) ─────────────────────────────────
   for (const [name, [x, y]] of Object.entries(pts)) {
     lines.push(`  \\fill ${tpt(x, y)} circle (1.5pt);`)
     const anchor = labelAnchor(name, x, y, pts, segs)
-    lines.push(`  \\node[${anchor},font=\\small] at ${tpt(x, y)} {$${name}$};`)
+    lines.push(`  \\node[${anchor}] at ${tpt(x, y)} {$${name}$};`)
   }
 
   // ── Extra text labels ─────────────────────────────────────────────────────
@@ -241,7 +241,7 @@ export function geometryToTikz(spec: GeometryDiagramSpec): string {
     const p = pts[lbl.at]
     if (!p) continue
     const off = lbl.offset ?? [0, 0.4]
-    lines.push(`  \\node[font=\\scriptsize] at ${tpt(p[0] + off[0], p[1] + off[1])} {${lbl.text}};`)
+    lines.push(`  \\node at ${tpt(p[0] + off[0], p[1] + off[1])} {${lbl.text}};`)
   }
 
   lines.push('\\end{tikzpicture}')
