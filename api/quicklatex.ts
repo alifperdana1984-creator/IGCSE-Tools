@@ -32,21 +32,23 @@ export default async function handler(req: Request): Promise<Response> {
 
   if (!formula) return new Response('Missing formula', { status: 400 })
 
-  const params = new URLSearchParams({
-    formula,
-    fsize: '17px',
-    fcolor: '000000',
-    bcolor: 'ffffff',
-    mode: '0',
-    out: '1',
-    errors: '1',
-    preamble: PREAMBLE,
-  })
+  // URLSearchParams encodes spaces as '+', but QuickLaTeX does not decode '+' as space.
+  // Use encodeURIComponent (spaces → '%20') so QuickLaTeX receives correct whitespace.
+  const body = [
+    `formula=${encodeURIComponent(formula)}`,
+    `fsize=17px`,
+    `fcolor=000000`,
+    `bcolor=ffffff`,
+    `mode=0`,
+    `out=1`,
+    `errors=1`,
+    `preamble=${encodeURIComponent(PREAMBLE)}`,
+  ].join('&')
 
   const qlRes = await fetch('https://quicklatex.com/latex3.f', {
     method: 'POST',
     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-    body: params.toString(),
+    body,
   })
 
   const text = await qlRes.text()
