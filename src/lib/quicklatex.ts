@@ -20,12 +20,16 @@ const cache = new Map<string, QuickLaTeXResult>()
 function wrapTikz(code: string): string {
   const trimmed = code.trim()
 
-  // AI often produces a full standalone document — extract the tikzpicture block.
+  // Complete tikzpicture block (with or without \documentclass wrapper) — extract it.
   const blockMatch = trimmed.match(/\\begin\{tikzpicture\}[\s\S]*?\\end\{tikzpicture\}/)
   if (blockMatch) return blockMatch[0]
 
-  // Already a bare tikzpicture block
-  if (trimmed.startsWith('\\begin{tikzpicture}')) return trimmed
+  // Truncated output: \begin{tikzpicture} present but \end{tikzpicture} missing — close it.
+  const beginIdx = trimmed.indexOf('\\begin{tikzpicture}')
+  if (beginIdx !== -1) {
+    const body = trimmed.slice(beginIdx)
+    return body + '\n\\end{tikzpicture}'
+  }
 
   // Bare TikZ commands — wrap them
   return `\\begin{tikzpicture}\n${trimmed}\n\\end{tikzpicture}`

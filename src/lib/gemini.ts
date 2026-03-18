@@ -667,13 +667,15 @@ REQUIREMENTS:
 2. Use the 'tikz' package. Include any necessary tikz libraries (e.g., \\usetikzlibrary{angles,quotes,calc,intersections}).
 3. Ensure the diagram clearly visualizes the geometry or situation described in the question.
 4. Do not include markdown formatting (like \`\`\`latex). Just the code.
-5. If no diagram is sensible, return nothing (empty string).`
+5. Keep the diagram SIMPLE — use at most 20 drawing commands. Do not add comments or decorative details.
+6. You MUST end the output with \\end{tikzpicture} and \\end{document}. Never truncate.
+7. If no diagram is sensible, return nothing (empty string).`
 
   try {
     const response = await ai.models.generateContent({
       model,
       contents: [{ role: 'user', parts: [{ text: prompt }] }],
-      config: { temperature: 0.2, maxOutputTokens: 2048 },
+      config: { temperature: 0.2, maxOutputTokens: 4096 },
     })
     const text = response.text?.trim()
     const clean = text?.replace(/^```(latex|tex)?/i, '').replace(/```$/, '').trim()
