@@ -130,6 +130,16 @@ export function normalizeDiagram(raw: unknown): DiagramSpec | undefined {
     const angCount = Array.isArray(d.angles) ? (d.angles as unknown[]).length : 0
     if (ptCount < 3 && angCount === 0) return undefined
 
+    // Strip trailing point-name suffixes from angle labels that AI incorrectly adds:
+    // "72° EAF" → "72°", "x BAC" → "x"
+    if (Array.isArray(d.angles)) {
+      for (const ang of d.angles as Record<string, unknown>[]) {
+        if (typeof ang.label === 'string') {
+          ang.label = ang.label.trim().replace(/\s+[A-Z]{2,4}\s*$/, '').trim()
+        }
+      }
+    }
+
     return raw as DiagramSpec
   }
   if (dt === 'geometric_shape') {

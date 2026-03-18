@@ -480,6 +480,7 @@ MATHEMATICS types:
   Example straight-line angles: {"diagramType":"geometry","points":[{"name":"A","x":1,"y":5},{"name":"B","x":5,"y":5},{"name":"C","x":9,"y":5},{"name":"P","x":3,"y":8}],"segments":[{"from":"A","to":"C"},{"from":"B","to":"P"}],"angles":[{"at":"B","between":["A","P"],"label":"55°"},{"at":"B","between":["P","C"],"label":"x"}]}
   Example parallel lines + transversal (AB‖CD, transversal EF, angle AEF=72°): {"diagramType":"geometry","points":[{"name":"A","x":1,"y":7},{"name":"B","x":9,"y":7},{"name":"E","x":6.5,"y":7},{"name":"C","x":1,"y":3},{"name":"D","x":9,"y":3},{"name":"F","x":4,"y":3}],"segments":[{"from":"A","to":"B"},{"from":"C","to":"D"},{"from":"E","to":"F"}],"parallel":[{"seg1":"AB","seg2":"CD"}],"angles":[{"at":"E","between":["A","F"],"label":"72°"}]}
   CRITICAL for parallel lines: ALWAYS include BOTH parallel lines (all 4 endpoints) AND both intersection points (E on AB, F on CD). Never omit the second line.
+  CRITICAL angle labels: label must be ONLY the degree value or variable — e.g. "72°", "x", "2x+10°". NEVER include point names — "72° EAF" is WRONG, "72°" is correct.
 • "circle_theorem" — circle with named points, chords, radii, angles. centre:{id:"O"}. pointsOnCircumference:[{id,angleDegrees}] (0°=right,90°=top). chords:[{s1,s2}]. radii:[{s1,s2}]. angles:[{vertex,rays:[p1,p2],label}].
   Example: {"diagramType":"circle_theorem","centre":{"id":"O"},"pointsOnCircumference":[{"id":"A","angleDegrees":20},{"id":"B","angleDegrees":144},{"id":"C","angleDegrees":260}],"radii":[{"s1":"O","s2":"A"},{"s1":"O","s2":"B"}],"chords":[{"s1":"A","s2":"C"},{"s1":"B","s2":"C"}],"angles":[{"vertex":"O","rays":["A","B"],"label":"124°"},{"vertex":"C","rays":["A","B"],"label":"x"}]}
 • "cartesian_grid" — xMin,xMax,yMin,yMax,gridStep. points:[{label,x,y}]. segments:[{x1,y1,x2,y2}].
@@ -683,6 +684,8 @@ GENERATION RULES:
    MATHEMATICS diagram types:
    • "geometry" — PREFERRED for ALL geometry questions (triangles, polygons, parallel lines, bearings, angles).
      points: [{name,x,y}] in 0-10 space. segments:[{from,to,label?}]. angles:[{at,between:[p1,p2],label}]. perpendicular:[{seg1,seg2}]. parallel:[{seg1,seg2}].
+     CRITICAL: angle label must be ONLY the degree value or variable — "72°", "x", "2x+10°". NEVER add point names like "72° EAF".
+     CRITICAL for parallel lines: include BOTH parallel lines (4 endpoints) AND both transversal intersection points. Example: {"diagramType":"geometry","points":[{"name":"A","x":1,"y":7},{"name":"B","x":9,"y":7},{"name":"E","x":6.5,"y":7},{"name":"C","x":1,"y":3},{"name":"D","x":9,"y":3},{"name":"F","x":4,"y":3}],"segments":[{"from":"A","to":"B"},{"from":"C","to":"D"},{"from":"E","to":"F"}],"parallel":[{"seg1":"AB","seg2":"CD"}],"angles":[{"at":"E","between":["A","F"],"label":"72°"}]}
      Example triangle: {"diagramType":"geometry","points":[{"name":"A","x":1,"y":1},{"name":"B","x":5,"y":8},{"name":"C","x":9,"y":1}],"segments":[{"from":"A","to":"B"},{"from":"B","to":"C"},{"from":"A","to":"C"}],"angles":[{"at":"A","between":["B","C"],"label":"50°"}]}
 
    • "circle_theorem" — For circle theorem questions (angle at centre, cyclic quadrilateral, tangent-radius, alternate segment, angles in same segment).

@@ -115,7 +115,9 @@ function labelAnchor(
 
 /** Format angle label for TikZ math mode: "72°" → "72^{\circ}", "x" → "x" */
 function fmtAngleLabel(label: string): string {
-  return label
+  // Strip trailing point-name suffixes the AI adds: "72° EAF" → "72°", "x BAC" → "x"
+  const cleaned = label.trim().replace(/\s+[A-Z]{2,4}\s*$/, '').trim()
+  return cleaned
     .replace(/°/g, '^{\\circ}')
     .replace(/\^(\d)/g, '^{$1}')    // ensure superscripts are braced
 }
