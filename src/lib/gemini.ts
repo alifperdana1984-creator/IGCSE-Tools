@@ -857,6 +857,8 @@ Return the ENTIRE assessment with ALL questions (corrected or unchanged).`
     const existing = assessment.questions[i]
     return {
       ...sanitized,
+      tikzCode: existing?.tikzCode,
+      hasDiagram: existing?.hasDiagram ?? sanitized.hasDiagram,
       id: existing?.id ?? crypto.randomUUID(),
       code: existing?.code ?? sharedGenerateQuestionCode(assessment.subject, {
         text: sanitized.text,

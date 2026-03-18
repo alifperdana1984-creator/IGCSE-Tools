@@ -954,30 +954,17 @@ export function sanitizeQuestion(q: any): Omit<QuestionItem, 'id'> {
     if (!geo.parallel || geo.parallel.length === 0) rawDiagram = undefined
   }
 
-  // Auto-generate a cartesian_grid when the model didn't provide one.
-  // Text-based extraction takes priority: it uses the actual named points (P, Q, A, B)
-  // from the question, which is more accurate than inferring from MCQ option values.
-  const diagram = rawDiagram ?? (() => {
-    // 1. Extract labeled coordinate points from question text, e.g. A(-1,4) or P(-4,1)
-    if (q.hasDiagram || referencesDiagram) {
-      const fromText = tryAutoCartesianFromText(normalizedText)
-      if (fromText) return fromText
-      const fromGeometry = tryAutoGeometryFromText(normalizedText, fix(q.answer ?? ''), options)
-      if (fromGeometry) return fromGeometry
-    }
-    // 2. Fallback: all MCQ options are coordinate pairs → plot the correct answer as point P
-    if (type === 'mcq' && options.length >= 2) {
-      return tryAutoCartesianDiagram(fix(q.answer ?? ''), options) ?? undefined
-    }
-    return undefined
-  })()
+  // Use the diagram provided by the model (if any).
+  // We no longer fallback to generating simple diagrams from text/options here,
+  // because Phase 3 will generate high-quality TikZ diagrams instead.
+  const diagram = rawDiagram
 
   // Detect questions that say "in the diagram" but have no SVG or structured diagram field.
   const hasSvg = /```svg/i.test(normalizedText)
   // Pure calculation questions about measurement bounds/accuracy don't genuinely need diagrams.
   // The AI sometimes incorrectly sets hasDiagram=true for these — suppress the warning.
   const isMeasurementBoundsQuestion = /\b(?:range of (?:the )?actual|correct to (?:the )?nearest (?:millimetre|centimetre|mm|cm)|upper bound|lower bound|error interval|bounds of accuracy)\b/i.test(normalizedText)
-  const diagramMissing = !isMeasurementBoundsQuestion && (referencesDiagram || Boolean(q.hasDiagram)) && !hasSvg && !diagram
+  const wantsDiagram = !isMeasurementBoundsQuestion && (referencesDiagram || Boolean(q.hasDiagram))
 
   return {
     text: normalizedText,
@@ -986,8 +973,7 @@ export function sanitizeQuestion(q: any): Omit<QuestionItem, 'id'> {
     marks: Number(q.marks) || 1,
     commandWord: q.commandWord ?? '',
     type,
-    hasDiagram: diagramMissing ? false : Boolean(q.hasDiagram || diagram),
-    ...(diagramMissing ? { diagramMissing: true } : {}),
+    hasDiagram: wantsDiagram,
     ...(diagram ? { diagram } : {}),
     ...(type === 'mcq' && options.length === 4 ? { options } : {}),
     ...(q.code ? { code: q.code } : {}),
