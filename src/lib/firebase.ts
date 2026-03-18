@@ -22,13 +22,22 @@ import { getStorage, ref as storageRef, uploadBytes, getDownloadURL, deleteObjec
 import firebaseConfig from '../../firebase-applet-config.json';
 import type { Assessment, Question, Folder, Resource, ResourceType, SyllabusCache, PastPaperCache, DiagramSpec } from './types'
 
+/** Remove undefined values from an object shallowly (Firestore rejects undefined). */
+function stripUndefined(obj: Record<string, unknown>): Record<string, unknown> {
+  const result: Record<string, unknown> = {}
+  for (const [k, v] of Object.entries(obj)) {
+    if (v !== undefined) result[k] = v
+  }
+  return result
+}
+
 /** Firestore does not support nested arrays. Convert geometry diagram's
  *  parallel/perpendicular fields from Array<[string,string]> to Array<{s1,s2}>.
  *  normalizeDiagram already handles the reverse conversion on read. */
 function serializeDiagram(diagram: unknown): unknown {
   if (!diagram || typeof diagram !== 'object') return diagram
   const d = diagram as Record<string, unknown>
-  const out: Record<string, unknown> = { ...d }
+  const out: Record<string, unknown> = stripUndefined({ ...d })
 
   // geometry: parallel/perpendicular [string,string][] → [{s1,s2}]
   if (d.diagramType === 'geometry') {
@@ -64,8 +73,9 @@ function serializeDiagram(diagram: unknown): unknown {
 function serializeQuestionDiagram(q: unknown): unknown {
   if (!q || typeof q !== 'object') return q
   const qObj = q as Record<string, unknown>
-  if (!qObj.diagram) return q
-  return { ...qObj, diagram: serializeDiagram(qObj.diagram) }
+  const base = stripUndefined({ ...qObj })
+  if (base.diagram) base.diagram = serializeDiagram(base.diagram)
+  return base
 }
 
 const app = initializeApp(firebaseConfig);
