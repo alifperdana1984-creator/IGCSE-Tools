@@ -579,6 +579,7 @@ export default function App() {
 
         {/* Main content */}
         {view === 'library' ? (
+          <div className="flex-1 min-h-0 overflow-hidden">
           <LibraryView
             assessments={library.assessments}
             questions={library.questions}
@@ -603,7 +604,9 @@ export default function App() {
             onTogglePublicAssessment={(id, isPublic) => library.togglePublicAssessment(id, isPublic, user.displayName ?? user.email ?? 'Unknown')}
             onTogglePublicQuestion={(id, isPublic) => library.togglePublicQuestion(id, isPublic, user.displayName ?? user.email ?? 'Unknown')}
           />
+          </div>
         ) : (
+          <div className="flex-1 min-h-0 overflow-hidden">
           <AssessmentView
             assessment={displayAssessment}
             analysisText={generation.analysisText}
@@ -626,6 +629,7 @@ export default function App() {
             onUpdateQuestion={handleUpdateQuestion}
             onRegenerateDiagrams={handleRegenerateDiagrams}
           />
+          </div>
         )}
 
         {/* Footer — fixed at bottom, always visible */}
