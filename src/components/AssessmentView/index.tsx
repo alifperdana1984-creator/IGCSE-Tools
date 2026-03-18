@@ -159,6 +159,21 @@ export function AssessmentView({
   const [repairingIds, setRepairingIds] = useState<Set<string>>(new Set())
   const [questionPage, setQuestionPage] = useState(1)
 
+  const renderedQuestions = assessment ? assessment.questions.map(repairQuestionItem) : []
+  const totalQuestionPages = Math.max(1, Math.ceil(renderedQuestions.length / QUESTIONS_PER_PAGE))
+  const safeQuestionPage = Math.min(questionPage, totalQuestionPages)
+  const questionStart = (safeQuestionPage - 1) * QUESTIONS_PER_PAGE
+  const pagedQuestions = renderedQuestions.slice(questionStart, questionStart + QUESTIONS_PER_PAGE)
+  const missingDiagramQuestions = renderedQuestions.filter(q => q.diagramMissing)
+
+  useEffect(() => {
+    setQuestionPage(1)
+  }, [assessment?.id, activeTab])
+
+  useEffect(() => {
+    if (questionPage > totalQuestionPages) setQuestionPage(totalQuestionPages)
+  }, [questionPage, totalQuestionPages])
+
   if (!assessment) {
     if (isGenerating && generationLog) {
       return (
@@ -232,21 +247,6 @@ export function AssessmentView({
     .map(repairQuestionItem)
     .map((q, i) => `### Q${i + 1} Mark Scheme [${q.marks} marks]\n\n${q.markScheme}`)
     .join('\n\n')
-
-  const renderedQuestions = assessment.questions.map(repairQuestionItem)
-  const totalQuestionPages = Math.max(1, Math.ceil(renderedQuestions.length / QUESTIONS_PER_PAGE))
-  const safeQuestionPage = Math.min(questionPage, totalQuestionPages)
-  const questionStart = (safeQuestionPage - 1) * QUESTIONS_PER_PAGE
-  const pagedQuestions = renderedQuestions.slice(questionStart, questionStart + QUESTIONS_PER_PAGE)
-  const missingDiagramQuestions = renderedQuestions.filter(q => q.diagramMissing)
-
-  useEffect(() => {
-    setQuestionPage(1)
-  }, [assessment.id, activeTab])
-
-  useEffect(() => {
-    if (questionPage > totalQuestionPages) setQuestionPage(totalQuestionPages)
-  }, [questionPage, totalQuestionPages])
 
   const handleRegenerateDiagram = (q: QuestionItem) => {
     if (!onUpdateQuestion) return

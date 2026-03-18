@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react'
+import React, { useState, useMemo, useEffect } from 'react'
 import ReactMarkdown from 'react-markdown'
 import remarkMath from 'remark-math'
 import remarkGfm from 'remark-gfm'
@@ -200,6 +200,7 @@ export function Library({
   onTogglePublicAssessment, onTogglePublicQuestion,
 }: Props) {
   const QUESTIONS_PER_PAGE = 20
+  const ASSESSMENTS_PER_PAGE = 12
   const [bankView, setBankView] = useState<'assessments' | 'questions'>('assessments')
   const [newFolderName, setNewFolderName] = useState('')
   const [renamingId, setRenamingId] = useState<string | null>(null)
@@ -213,6 +214,7 @@ export function Library({
   const [isDeleting, setIsDeleting] = useState(false)
   const [subjectFilter, setSubjectFilter] = useState<string>('')
   const [questionPage, setQuestionPage] = useState(1)
+  const [assessmentPage, setAssessmentPage] = useState(1)
 
   const subjectOptions = useMemo(() => {
     const set = new Set<string>()
@@ -228,10 +230,24 @@ export function Library({
   const filteredQuestions = subjectFilter
     ? questions.filter(q => q.subject === subjectFilter)
     : questions
+
+  const totalAssessmentPages = Math.max(1, Math.ceil(filteredAssessments.length / ASSESSMENTS_PER_PAGE))
+  const safeAssessmentPage = Math.min(assessmentPage, totalAssessmentPages)
+  const assessmentStart = (safeAssessmentPage - 1) * ASSESSMENTS_PER_PAGE
+  const pagedAssessments = filteredAssessments.slice(assessmentStart, assessmentStart + ASSESSMENTS_PER_PAGE)
+
   const totalQuestionPages = Math.max(1, Math.ceil(filteredQuestions.length / QUESTIONS_PER_PAGE))
   const safeQuestionPage = Math.min(questionPage, totalQuestionPages)
   const questionStart = (safeQuestionPage - 1) * QUESTIONS_PER_PAGE
   const pagedQuestions = filteredQuestions.slice(questionStart, questionStart + QUESTIONS_PER_PAGE)
+
+  useEffect(() => {
+    if (questionPage > totalQuestionPages) setQuestionPage(totalQuestionPages)
+  }, [questionPage, totalQuestionPages])
+
+  useEffect(() => {
+    if (assessmentPage > totalAssessmentPages) setAssessmentPage(totalAssessmentPages)
+  }, [assessmentPage, totalAssessmentPages])
 
   const handleConfirmDelete = async () => {
     if (!confirmDelete) return
@@ -350,20 +366,20 @@ export function Library({
         {/* Tab switcher + subject filter */}
         <div className="flex items-center gap-2 px-4 pt-4 pb-2 flex-wrap">
           <button
-            onClick={() => { setBankView('assessments'); setSelectedIds(new Set()); setQuestionPage(1) }}
+            onClick={() => { setBankView('assessments'); setSelectedIds(new Set()); setQuestionPage(1); setAssessmentPage(1) }}
             className={`text-sm px-3 py-1.5 rounded-lg font-medium ${bankView === 'assessments' ? 'bg-emerald-600 text-white' : 'bg-stone-100 text-stone-600 hover:bg-stone-200'}`}
           >
             Assessments ({filteredAssessments.length})
           </button>
           <button
-            onClick={() => { setBankView('questions'); setSelectedIds(new Set()); setQuestionPage(1) }}
+            onClick={() => { setBankView('questions'); setSelectedIds(new Set()); setQuestionPage(1); setAssessmentPage(1) }}
             className={`text-sm px-3 py-1.5 rounded-lg font-medium ${bankView === 'questions' ? 'bg-emerald-600 text-white' : 'bg-stone-100 text-stone-600 hover:bg-stone-200'}`}
           >
             Questions ({filteredQuestions.length})
           </button>
           <select
             value={subjectFilter}
-            onChange={e => { setSubjectFilter(e.target.value); setQuestionPage(1) }}
+            onChange={e => { setSubjectFilter(e.target.value); setQuestionPage(1); setAssessmentPage(1) }}
             className="ml-auto text-xs border border-stone-300 rounded-lg px-2 py-1.5 bg-white text-stone-600"
           >
             <option value="">All subjects</option>
@@ -415,7 +431,7 @@ export function Library({
 
           {bankView === 'assessments' && (
             <div className="grid grid-cols-1 gap-3">
-              {filteredAssessments.map(a => {
+              {pagedAssessments.map(a => {
                 const isGlobal = a.userId !== currentUserId && a.isPublic
                 return (
                 <div key={a.id} className={`border rounded-lg p-3 hover:shadow-sm transition-all ${isGlobal ? 'bg-sky-50 border-sky-200 hover:border-sky-400' : 'bg-white border-stone-200 hover:border-emerald-300'}`}>
@@ -484,6 +500,29 @@ export function Library({
               {filteredAssessments.length === 0 && !loading && (
                 <div className="text-stone-400 text-sm text-center py-8">
                   {subjectFilter ? `No ${subjectFilter} assessments found.` : 'No assessments saved yet.'}
+                </div>
+              )}
+              {filteredAssessments.length > 0 && totalAssessmentPages > 1 && (
+                <div className="flex items-center justify-between mt-2 px-1">
+                  <span className="text-xs text-stone-500">
+                    Page {safeAssessmentPage} / {totalAssessmentPages}
+                  </span>
+                  <div className="flex gap-1.5">
+                    <button
+                      onClick={() => setAssessmentPage(p => Math.max(1, p - 1))}
+                      disabled={safeAssessmentPage === 1}
+                      className="px-2.5 py-1 text-xs bg-stone-100 text-stone-600 rounded disabled:opacity-40"
+                    >
+                      Prev
+                    </button>
+                    <button
+                      onClick={() => setAssessmentPage(p => Math.min(totalAssessmentPages, p + 1))}
+                      disabled={safeAssessmentPage === totalAssessmentPages}
+                      className="px-2.5 py-1 text-xs bg-stone-100 text-stone-600 rounded disabled:opacity-40"
+                    >
+                      Next
+                    </button>
+                  </div>
                 </div>
               )}
             </div>
