@@ -5,7 +5,7 @@ import { SVG_TEMPLATES } from './svgTemplates'
 const KNOWN_DIAGRAM_TYPES = new Set([
   'cartesian_grid', 'geometric_shape', 'number_line', 'bar_chart', 'geometry',
   'circle_theorem', 'science_graph', 'genetic_diagram', 'energy_level_diagram',
-  'food_web', 'energy_pyramid', 'flowchart', 'svg_template',
+  'food_web', 'energy_pyramid', 'flowchart', 'svg_template', 'tikz', 'geogebra',
 ])
 
 export function normalizeDiagram(raw: unknown): DiagramSpec | undefined {
@@ -235,6 +235,24 @@ export function normalizeDiagram(raw: unknown): DiagramSpec | undefined {
     d.labels = (d.labels as Array<Record<string, unknown>>).filter(
       l => l.anchorId && template.anchors[l.anchorId as string]
     )
+  }
+
+  if (dt === 'tikz') {
+    // tikzCode is the flat Gemini field name; normalise to code
+    if (typeof d.tikzCode === 'string' && typeof d.code !== 'string') {
+      d.code = d.tikzCode
+      delete d.tikzCode
+    }
+    if (typeof d.code !== 'string' || !d.code.trim()) return undefined
+  }
+
+  if (dt === 'geogebra') {
+    // ggbCommands is the flat Gemini field name; normalise to commands
+    if (Array.isArray(d.ggbCommands) && !Array.isArray(d.commands)) {
+      d.commands = d.ggbCommands
+      delete d.ggbCommands
+    }
+    if (!Array.isArray(d.commands) || (d.commands as unknown[]).length === 0) return undefined
   }
 
   return raw as DiagramSpec

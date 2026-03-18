@@ -155,7 +155,23 @@ export interface SvgTemplateSpec {
   labels?: Array<{ anchorId: string; text: string }>
 }
 
-export type DiagramSpec = CartesianGridSpec | GeometricShapeSpec | NumberLineSpec | BarChartSpec | GeometryDiagramSpec | CircleTheoremSpec | ScienceGraphSpec | GeneticDiagramSpec | EnergyLevelDiagramSpec | FoodWebSpec | EnergyPyramidSpec | FlowchartSpec | SvgTemplateSpec
+/** Layer 3a — TikZ code rendered server-side via QuickLaTeX to PNG. */
+export interface TikzSpec {
+  diagramType: 'tikz'
+  /** Full \begin{tikzpicture}...\end{tikzpicture} block or just the body. */
+  code: string
+}
+
+/** Layer 3b — GeoGebra geometry applet driven by AI-generated commands. */
+export interface GeoGebraSpec {
+  diagramType: 'geogebra'
+  /** GeoGebra commands, e.g. ["A=(0,0)", "B=(4,0)", "c=Segment(A,B)"] */
+  commands: string[]
+  width?: number
+  height?: number
+}
+
+export type DiagramSpec = CartesianGridSpec | GeometricShapeSpec | NumberLineSpec | BarChartSpec | GeometryDiagramSpec | CircleTheoremSpec | ScienceGraphSpec | GeneticDiagramSpec | EnergyLevelDiagramSpec | FoodWebSpec | EnergyPyramidSpec | FlowchartSpec | SvgTemplateSpec | TikzSpec | GeoGebraSpec
 
 // ────────────────────────────────────────────────────────────────────────────
 
