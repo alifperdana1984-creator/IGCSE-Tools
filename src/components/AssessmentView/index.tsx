@@ -151,11 +151,16 @@ const TIKZ_SNIPPETS = [
 ]
 
 function TikzEditor({
-  value,
-  onChange,
+  value, onChange,
+  maxWidth, onMaxWidthChange,
+  minHeight, onMinHeightChange,
 }: {
   value: string
   onChange: (v: string) => void
+  maxWidth: number
+  onMaxWidthChange: (v: number) => void
+  minHeight: number
+  onMinHeightChange: (v: number) => void
 }) {
   const [tab, setTab] = useState<'code' | 'preview'>('code')
   const textareaRef = useRef<HTMLTextAreaElement>(null)
@@ -167,7 +172,6 @@ function TikzEditor({
     const end = el.selectionEnd
     const next = value.slice(0, start) + snippet + value.slice(end)
     onChange(next)
-    // restore cursor after snippet
     requestAnimationFrame(() => {
       el.focus()
       el.setSelectionRange(start + snippet.length, start + snippet.length)
@@ -176,31 +180,55 @@ function TikzEditor({
 
   return (
     <div className="border border-stone-300 rounded-lg overflow-hidden bg-white">
-      {/* Tab bar + toolbar */}
-      <div className="flex items-center gap-0 border-b border-stone-200 bg-stone-50 px-2 py-1 flex-wrap gap-y-1">
+      {/* Tab bar + snippet toolbar */}
+      <div className="flex items-center border-b border-stone-200 bg-stone-50 px-2 py-1 flex-wrap gap-y-1 gap-x-1">
         <button
           onClick={() => setTab('code')}
-          className={`flex items-center gap-1 px-2.5 py-1 rounded text-xs font-medium mr-1 ${tab === 'code' ? 'bg-white shadow-sm text-stone-800 border border-stone-200' : 'text-stone-500 hover:text-stone-700'}`}
+          className={`flex items-center gap-1 px-2.5 py-1 rounded text-xs font-medium ${tab === 'code' ? 'bg-white shadow-sm text-stone-800 border border-stone-200' : 'text-stone-500 hover:text-stone-700'}`}
         >
           <Code2 className="w-3 h-3" /> Code
         </button>
         <button
           onClick={() => setTab('preview')}
-          className={`flex items-center gap-1 px-2.5 py-1 rounded text-xs font-medium mr-3 ${tab === 'preview' ? 'bg-white shadow-sm text-stone-800 border border-stone-200' : 'text-stone-500 hover:text-stone-700'}`}
+          className={`flex items-center gap-1 px-2.5 py-1 rounded text-xs font-medium mr-2 ${tab === 'preview' ? 'bg-white shadow-sm text-stone-800 border border-stone-200' : 'text-stone-500 hover:text-stone-700'}`}
         >
           <Eye className="w-3 h-3" /> Preview
         </button>
-        <div className="h-3.5 w-px bg-stone-300 mr-3 hidden sm:block" />
+        <div className="h-3.5 w-px bg-stone-300 mr-2 hidden sm:block" />
         {tab === 'code' && TIKZ_SNIPPETS.map(s => (
           <button
             key={s.label}
             onClick={() => insertSnippet(s.insert)}
-            className="px-2 py-0.5 rounded text-xs bg-violet-50 text-violet-700 hover:bg-violet-100 border border-violet-200 mr-1 font-mono"
+            className="px-2 py-0.5 rounded text-xs bg-violet-50 text-violet-700 hover:bg-violet-100 border border-violet-200 font-mono"
             title={s.insert}
           >
             {s.label}
           </button>
         ))}
+      </div>
+
+      {/* Size controls */}
+      <div className="flex items-center gap-4 px-3 py-1.5 border-b border-stone-100 bg-stone-50/60 text-xs text-stone-500">
+        <label className="flex items-center gap-1.5 shrink-0">
+          Max width
+          <input
+            type="number" min={100} max={900} step={10}
+            value={maxWidth}
+            onChange={e => onMaxWidthChange(Number(e.target.value))}
+            className="w-16 px-1.5 py-0.5 border border-stone-300 rounded text-xs text-stone-700 focus:outline-none focus:ring-1 focus:ring-violet-400"
+          />
+          <span>px</span>
+        </label>
+        <label className="flex items-center gap-1.5 shrink-0">
+          Min height
+          <input
+            type="number" min={0} max={600} step={10}
+            value={minHeight}
+            onChange={e => onMinHeightChange(Number(e.target.value))}
+            className="w-16 px-1.5 py-0.5 border border-stone-300 rounded text-xs text-stone-700 focus:outline-none focus:ring-1 focus:ring-violet-400"
+          />
+          <span>px</span>
+        </label>
       </div>
 
       {tab === 'code' ? (
@@ -216,7 +244,7 @@ function TikzEditor({
       ) : (
         <div className="p-3 min-h-[200px] flex items-center justify-center bg-stone-50">
           {value.trim() ? (
-            <DiagramRenderer spec={{ diagramType: 'tikz', code: value }} />
+            <DiagramRenderer spec={{ diagramType: 'tikz', code: value, maxWidth, minHeight: minHeight || undefined }} />
           ) : (
             <span className="text-xs text-stone-400 italic">No code to preview</span>
           )}
@@ -240,7 +268,7 @@ export function AssessmentView({
   const [editContent, setEditContent] = useState('')
   const [showPicker, setShowPicker] = useState(false)
   const [editingQId, setEditingQId] = useState<string | null>(null)
-  const [editDraft, setEditDraft] = useState<{ text: string; answer: string; markScheme: string; tikzCode: string }>({ text: '', answer: '', markScheme: '', tikzCode: '' })
+  const [editDraft, setEditDraft] = useState<{ text: string; answer: string; markScheme: string; tikzCode: string; maxWidth: number; minHeight: number }>({ text: '', answer: '', markScheme: '', tikzCode: '', maxWidth: 480, minHeight: 0 })
   const [isSaving, setIsSaving] = useState(false)
   const [isDownloading, setIsDownloading] = useState(false)
   const [isFeedbackLoading, setIsFeedbackLoading] = useState(false)
@@ -497,7 +525,12 @@ export function AssessmentView({
                           onClick={() => {
                           const updates: Partial<QuestionItem> = { text: editDraft.text, answer: editDraft.answer, markScheme: editDraft.markScheme }
                           if (editDraft.tikzCode.trim()) {
-                            updates.diagram = { diagramType: 'tikz', code: editDraft.tikzCode }
+                            updates.diagram = {
+                              diagramType: 'tikz',
+                              code: editDraft.tikzCode,
+                              maxWidth: editDraft.maxWidth || undefined,
+                              minHeight: editDraft.minHeight || undefined,
+                            }
                           } else if (q.hasDiagram) {
                             updates.diagram = undefined
                           }
@@ -539,6 +572,10 @@ export function AssessmentView({
                           <TikzEditor
                             value={editDraft.tikzCode}
                             onChange={v => setEditDraft(d => ({ ...d, tikzCode: v }))}
+                            maxWidth={editDraft.maxWidth}
+                            onMaxWidthChange={v => setEditDraft(d => ({ ...d, maxWidth: v }))}
+                            minHeight={editDraft.minHeight}
+                            onMinHeightChange={v => setEditDraft(d => ({ ...d, minHeight: v }))}
                           />
                         </div>
                       )}
@@ -572,7 +609,7 @@ export function AssessmentView({
                       )}
                       {onUpdateQuestion && !studentMode && (
                         <button
-                          onClick={() => { setEditingQId(q.id); setEditDraft({ text: q.text, answer: q.answer, markScheme: q.markScheme, tikzCode: q.diagram?.code ?? '' }) }}
+                          onClick={() => { setEditingQId(q.id); setEditDraft({ text: q.text, answer: q.answer, markScheme: q.markScheme, tikzCode: q.diagram?.code ?? '', maxWidth: q.diagram?.maxWidth ?? 480, minHeight: q.diagram?.minHeight ?? 0 }) }}
                           className="ml-1 opacity-0 group-hover:opacity-100 p-0.5 text-stone-400 hover:text-emerald-600 transition-opacity"
                           title="Edit question"
                         >

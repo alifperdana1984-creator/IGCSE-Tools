@@ -3,6 +3,8 @@ import { Timestamp } from "firebase/firestore";
 export interface TikzSpec {
   diagramType: 'tikz'
   code: string
+  maxWidth?: number   // px, default 480
+  minHeight?: number  // px, default 0
 }
 
 export interface QuestionItem {
