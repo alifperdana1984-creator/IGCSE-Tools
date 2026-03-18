@@ -886,15 +886,22 @@ function normalizeOptionMath(opt: string): string {
   // If the content contains LaTeX commands (\circ, \frac, \text, etc.) or math syntax
   if (/\\[a-zA-Z]/.test(s) || /\^|_/.test(s)) {
     s = s.replace(/\$\$/g, '$')
-    // Only wrap the ENTIRE string in $...$ if it is a pure math expression, NOT a
-    // natural-language sentence. Wrapping a sentence in $...$ strips all spaces in
-    // math mode (KaTeX), making it unreadable. Heuristic: after removing inline math
-    // spans and \command{...} groups, if 3+ letter words remain with spaces it's a sentence.
+    // Determine if this is a natural-language sentence (don't wrap) or pure math (do wrap).
+    // Heuristic: after removing inline $...$ spans and \cmd{...} groups, if 3+ letter
+    // words with spaces remain, it's a sentence.
     const stripped = s
       .replace(/\$[^$]+\$/g, '')
       .replace(/\\[a-zA-Z]+(?:\{[^}]*\})?/g, '')
     const isSentence = /[a-zA-Z]{3,}\s+[a-zA-Z]{3,}/.test(stripped)
-    if (!isSentence && !s.startsWith('$')) s = `$${s}$`
+    if (!isSentence) {
+      // Pure math expression. Consolidate: if the string mixes bare math and $...$ spans
+      // (e.g. "0.25$\text{ km}$"), strip all $ delimiters and re-wrap as one $...$.
+      if (s.includes('$')) {
+        s = '$' + s.replace(/\$/g, '') + '$'
+      } else {
+        s = `$${s}$`
+      }
+    }
   }
   return s
 }

@@ -5,10 +5,8 @@
  */
 export const config = { runtime: 'edge' }
 
-const PREAMBLE = [
-  '\\usepackage{tikz}',
-  '\\usetikzlibrary{arrows.meta,patterns,decorations.pathmorphing}',
-].join('\n')
+// Minimal preamble — no \usetikzlibrary to avoid pgf version compatibility issues
+const PREAMBLE = '\\usepackage{tikz}'
 
 export default async function handler(req: Request): Promise<Response> {
   if (req.method === 'OPTIONS') {

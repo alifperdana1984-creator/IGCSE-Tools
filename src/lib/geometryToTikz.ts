@@ -192,11 +192,11 @@ export function geometryToTikz(spec: GeometryDiagramSpec): string {
     drawRightAngleMarker(lines, pts[common], pts[o1], pts[o2])
   }
 
-  // ── Angle arcs + labels (fully numeric — no named nodes, no calc) ─────────
-  // Arc: \draw (arcStartX, arcStartY) arc (startDeg:endDeg:radiusCm)
-  // Older pgf on QuickLaTeX fails to parse negative angles in arc (a:b:r).
-  // Fix: always draw CCW (counterclockwise), always keep angles in [0, 360+sweep].
+  // ── Angle arcs + labels ───────────────────────────────────────────────────
+  // QuickLaTeX's old pgf may not support \draw (x,y) arc (a:b:r) reliably.
+  // Instead, approximate the arc as N short line segments — works on any pgf.
   const arcR_geom = 0.42 / S  // geometry units → scales to exactly 0.42cm via tpt()
+  const ARC_STEPS = 16
   for (const angle of angles) {
     const at = pts[angle.at]
     const [b0, b1] = angle.between
@@ -206,30 +206,22 @@ export function geometryToTikz(spec: GeometryDiagramSpec): string {
     const a0_rad = Math.atan2(p0[1] - at[1], p0[0] - at[0])
     const a1_rad = Math.atan2(p1[1] - at[1], p1[0] - at[0])
 
-    // Normalise sweep to (-180, 180] — the non-reflex interior angle
+    // Normalise sweep to (-180, 180] — non-reflex interior angle
     let sweep_rad = a1_rad - a0_rad
     while (sweep_rad > Math.PI)  sweep_rad -= 2 * Math.PI
     while (sweep_rad <= -Math.PI) sweep_rad += 2 * Math.PI
 
-    // Always draw CCW: if sweep is CW (negative), flip start/end
-    let startRad = a0_rad
-    const sweepAbs = Math.abs(sweep_rad)
-    if (sweep_rad < 0) startRad = a0_rad + sweep_rad  // = a1_rad
+    // Build polyline approximation of the arc
+    const arcPts: string[] = []
+    for (let i = 0; i <= ARC_STEPS; i++) {
+      const theta = a0_rad + sweep_rad * (i / ARC_STEPS)
+      const px = at[0] + arcR_geom * Math.cos(theta)
+      const py = at[1] + arcR_geom * Math.sin(theta)
+      arcPts.push(tpt(px, py))
+    }
+    lines.push(`  \\draw ${arcPts.join(' -- ')};`)
 
-    // Shift startDeg into [0, 360) to avoid negative angles in arc command
-    let startDeg = startRad * 180 / Math.PI
-    if (startDeg < 0)   startDeg += 360
-    if (startDeg >= 360) startDeg -= 360
-    const endDeg = startDeg + sweepAbs * 180 / Math.PI  // always > startDeg, always positive
-
-    // Arc start point in geometry units (vertex + r * direction of startRad)
-    const arcStartX = at[0] + arcR_geom * Math.cos(startRad)
-    const arcStartY = at[1] + arcR_geom * Math.sin(startRad)
-    lines.push(
-      `  \\draw ${tpt(arcStartX, arcStartY)} arc (${startDeg.toFixed(2)}:${endDeg.toFixed(2)}:0.42cm);`
-    )
-
-    // Label on the bisector of the interior angle (midpoint of sweep from a0_rad)
+    // Label on the bisector of the interior angle
     const bisector = a0_rad + sweep_rad / 2
     const labelR = 0.68 / S   // geometry units
     const lx = at[0] + Math.cos(bisector) * labelR
