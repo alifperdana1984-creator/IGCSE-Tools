@@ -32,6 +32,7 @@ interface Props {
   bankQuestions?: Question[]
   onAddQuestions?: (questions: QuestionItem[]) => void
   onUpdateQuestion?: (questionId: string, updates: Partial<QuestionItem>) => void
+  onRegenerateDiagrams?: (questions: QuestionItem[]) => Promise<void>
 }
 
 function QuestionMarkdown({ content }: { content: string }) {
@@ -143,7 +144,7 @@ export function AssessmentView({
   isGenerating, generationLog,
   onEdit, onCancelEdit, onSave, onSaveToLibrary, onStudentFeedback, onCopy,
   activeTab, onTabChange,
-  onRemoveQuestion, onMoveQuestion, bankQuestions, onAddQuestions, onUpdateQuestion,
+  onRemoveQuestion, onMoveQuestion, bankQuestions, onAddQuestions, onUpdateQuestion, onRegenerateDiagrams,
 }: Props) {
   const QUESTIONS_PER_PAGE = 8
   const contentRef = useRef<HTMLDivElement>(null)
@@ -248,25 +249,58 @@ export function AssessmentView({
     .map((q, i) => `### Q${i + 1} Mark Scheme [${q.marks} marks]\n\n${q.markScheme}`)
     .join('\n\n')
 
-  const handleRegenerateDiagram = (q: QuestionItem) => {
+  const handleRegenerateDiagram = async (q: QuestionItem) => {
+    if (onRegenerateDiagrams) {
+      setRepairingIds(prev => new Set(prev).add(q.id))
+      try {
+        await onRegenerateDiagrams([q])
+      } finally {
+        setRepairingIds(prev => {
+          const next = new Set(prev)
+          next.delete(q.id)
+          return next
+        })
+      }
+      return
+    }
     if (!onUpdateQuestion) return
-    setRepairingIds(prev => new Set(prev).add(q.id))
     const repaired = repairQuestionItem(q)
     onUpdateQuestion(q.id, {
       hasDiagram: repaired.hasDiagram,
       diagramMissing: repaired.diagramMissing,
       diagram: repaired.diagram,
     })
-    setRepairingIds(prev => {
-      const next = new Set(prev)
-      next.delete(q.id)
-      return next
-    })
   }
 
-  const handleRegenerateAllMissing = () => {
+  const handleRegenerateAllMissing = async () => {
+    if (!missingDiagramQuestions.length) return
+    if (onRegenerateDiagrams) {
+      const allIds = missingDiagramQuestions.map(q => q.id)
+      setRepairingIds(prev => {
+        const next = new Set(prev)
+        allIds.forEach(id => next.add(id))
+        return next
+      })
+      try {
+        await onRegenerateDiagrams(missingDiagramQuestions)
+      } finally {
+        setRepairingIds(prev => {
+          const next = new Set(prev)
+          allIds.forEach(id => next.delete(id))
+          return next
+        })
+      }
+      return
+    }
     if (!onUpdateQuestion) return
-    missingDiagramQuestions.forEach(q => handleRegenerateDiagram(q))
+    missingDiagramQuestions.forEach(q => {
+      const repaired = repairQuestionItem(q)
+      onUpdateQuestion(q.id, {
+        hasDiagram: repaired.hasDiagram,
+        diagramMissing: repaired.diagramMissing,
+        diagram: repaired.diagram,
+      })
+    })
   }
 
   const currentText = activeTab === 'questions' ? questionsText
@@ -302,7 +336,7 @@ export function AssessmentView({
           )}
           {onUpdateQuestion && !studentMode && activeTab === 'questions' && missingDiagramQuestions.length > 0 && (
             <button
-              onClick={handleRegenerateAllMissing}
+              onClick={() => { void handleRegenerateAllMissing() }}
               className="px-2.5 py-1.5 text-xs bg-amber-100 text-amber-800 rounded-lg font-medium flex items-center gap-1 hover:bg-amber-200"
               title="Regenerate missing diagrams without changing question text"
             >
@@ -476,7 +510,7 @@ export function AssessmentView({
                           <span>Diagram was not generated for this question - it may be unanswerable.</span>
                           {onUpdateQuestion && !studentMode && (
                             <button
-                              onClick={() => handleRegenerateDiagram(q)}
+                              onClick={() => { void handleRegenerateDiagram(q) }}
                               disabled={repairingIds.has(q.id)}
                               className="ml-2 inline-flex items-center gap-1 px-2 py-0.5 rounded bg-amber-200 text-amber-900 hover:bg-amber-300 disabled:opacity-60"
                               title="Regenerate diagram without changing question text"

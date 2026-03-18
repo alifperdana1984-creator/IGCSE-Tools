@@ -490,6 +490,24 @@ All label strings: plain text only, no LaTeX or dollar signs.`
   }
 }
 
+export async function regenerateDiagramsForQuestions(
+  questions: QuestionItem[],
+  subject: string,
+  model: string = 'gemini-2.0-flash',
+  apiKey?: string,
+  onUsage?: UsageCallback,
+  onLog?: (msg: string) => void,
+): Promise<Array<{ id: string; diagram: DiagramSpec }>> {
+  const ai = getAI(apiKey)
+  const results = await Promise.all(
+    questions.map(async q => {
+      const diagram = await generateDiagramForQuestion(q, subject, model, ai, onUsage, onLog)
+      return diagram ? { id: q.id, diagram } : null
+    })
+  )
+  return results.filter((v): v is { id: string; diagram: DiagramSpec } => Boolean(v))
+}
+
 export async function generateTest(
   config: GenerationConfig & { references?: Reference[]; apiKey?: string },
   onRetry?: (attempt: number) => void,

@@ -18,6 +18,7 @@ import { Library as LibraryView } from './components/Library'
 import { Notifications } from './components/Notifications'
 import { copyToClipboard } from './lib/clipboard'
 import { repairQuestionItem } from './lib/sanitize'
+import { regenerateDiagramsForQuestions } from './lib/gemini'
 
 const DEFAULT_CONFIG: GenerationConfig = {
   provider: 'gemini',
@@ -373,6 +374,41 @@ export default function App() {
     })
   }, [generation])
 
+  const handleRegenerateDiagrams = useCallback(async (questions: QuestionItem[]) => {
+    if (!questions.length) return
+    if (!currentApiKey) {
+      notify('Diagram regenerate requires an API key. Open API Settings and add your key.', 'error')
+      setApiSettingsOpen(true)
+      return
+    }
+    const assessment = generation.generatedAssessment
+    if (!assessment) return
+    try {
+      const regenerated = await regenerateDiagramsForQuestions(
+        questions.map(repairQuestionItem),
+        assessment.subject,
+        customModel.trim() || config.model || DEFAULT_MODELS['gemini'],
+        currentApiKey,
+      )
+      if (!regenerated.length) {
+        notify('Diagram regenerate could not produce a valid diagram for this question.', 'error')
+        return
+      }
+      const byId = new Map(regenerated.map(item => [item.id, item.diagram]))
+      generation.setGeneratedAssessment({
+        ...assessment,
+        questions: assessment.questions.map(q => {
+          const diagram = byId.get(q.id)
+          if (!diagram) return q
+          return { ...q, diagram, hasDiagram: true, diagramMissing: undefined }
+        }),
+      })
+      notify(`Regenerated ${regenerated.length} diagram${regenerated.length > 1 ? 's' : ''}.`, 'success')
+    } catch (e: any) {
+      notify(e?.message || 'Failed to regenerate diagram.', 'error')
+    }
+  }, [currentApiKey, generation, notify, customModel, config.model])
+
   const handleDeleteAccount = useCallback(async () => {
     setIsDeleting(true)
     try {
@@ -586,6 +622,7 @@ export default function App() {
             bankQuestions={library.questions}
             onAddQuestions={handleAddQuestionsToCurrentAssessment}
             onUpdateQuestion={handleUpdateQuestion}
+            onRegenerateDiagrams={handleRegenerateDiagrams}
           />
         )}
 
