@@ -396,13 +396,24 @@ const DIAGRAM_SCHEMA = {
     showCatalystPath: { type: Type.BOOLEAN, nullable: true },
     catalystPeak:     { type: Type.NUMBER, nullable: true },
     showRatio:        { type: Type.BOOLEAN, nullable: true },
-    // All array fields kept as untyped items to avoid Gemini schema complexity.
-    // sanitize.ts validates and normalises at runtime.
-    points:              { type: Type.ARRAY, nullable: true, items: { type: Type.OBJECT } },
-    segments:            { type: Type.ARRAY, nullable: true, items: { type: Type.OBJECT } },
-    polygons:            { type: Type.ARRAY, nullable: true, items: { type: Type.OBJECT } },
-    shapes:              { type: Type.ARRAY, nullable: true, items: { type: Type.OBJECT } },
-    nlPoints:            { type: Type.ARRAY, nullable: true, items: { type: Type.OBJECT } },
+    // Stricter schema for geometry elements to prevent "rejected by normalizeDiagram"
+    points: { 
+      type: Type.ARRAY, nullable: true, 
+      items: { 
+        type: Type.OBJECT,
+        properties: {
+          name: { type: Type.STRING, nullable: true },
+          x: { type: Type.NUMBER },
+          y: { type: Type.NUMBER },
+          label: { type: Type.STRING, nullable: true }
+        },
+        required: ['x', 'y']
+      } 
+    },
+    segments: { type: Type.ARRAY, nullable: true, items: { type: Type.OBJECT, properties: { from: {type:Type.STRING}, to: {type:Type.STRING}, label: {type:Type.STRING, nullable:true} }, required: ['from', 'to'] } },
+    polygons: { type: Type.ARRAY, nullable: true, items: { type: Type.OBJECT } },
+    shapes:   { type: Type.ARRAY, nullable: true, items: { type: Type.OBJECT } },
+    nlPoints: { type: Type.ARRAY, nullable: true, items: { type: Type.OBJECT } },
     ranges:              { type: Type.ARRAY, nullable: true, items: { type: Type.OBJECT } },
     bars:                { type: Type.ARRAY, nullable: true, items: { type: Type.OBJECT } },
     // circle_theorem
@@ -483,7 +494,7 @@ RULES:
 - Pick EXACTLY ONE diagramType and fill in ALL required fields for that type.
 - ALL numeric values must be plain integers or decimals — never null, never strings.
 - Invent specific, realistic numbers (e.g. side lengths, temperatures, coordinates) — these become the ground truth that the question text will be written around.
-- Labels: plain text only, no LaTeX or dollar signs inside label strings.
+- Coordinate Space: Use a logical 0-10 or 0-100 grid. Ensure shapes fit within view.
 - Angle labels: ONLY the value or variable — "72°" or "x", NEVER "angle EAF = 72°".
 
 ${DIAGRAM_TYPE_DOCS}`
@@ -768,7 +779,7 @@ Return EXACTLY ${config.count} slots.`
     const diagramSection = s.hasDiagram && s.diagram
       ? `  hasDiagram: true\n  diagram (GROUND TRUTH — your question text MUST reference these exact values):\n  ${JSON.stringify(s.diagram)}`
       : s.hasDiagram
-        ? `  hasDiagram: true (diagram spec unavailable — write the question without referencing specific diagram values)`
+        ? `  hasDiagram: false (diagram failed to generate — do NOT write a question that relies on a visual)`
         : `  hasDiagram: false`
     return `Q${s.index + 1}: topic="${s.topic}", type="${s.questionType}"\n${diagramSection}`
   }).join('\n\n')
@@ -792,7 +803,8 @@ WRITING RULES:
 2. DIAGRAMS: If a slot has hasDiagram=true and provides a diagram JSON above:
    - Set hasDiagram=true in your output.
    - Your question text MUST reference the exact numbers/labels shown in that diagram.
-     E.g. if the diagram shows a triangle with AB=5 cm and BC=12 cm, write "In the diagram, AB = 5 cm and BC = 12 cm…"
+     E.g. If the diagram shows a triangle points A(0,0), B(4,0), write about a base of length 4.
+     E.g. If the diagram shows a speed-time graph going to (10, 20), ask about speed at t=10.
    - Do NOT invent different values — the diagram JSON is the ground truth; it will be automatically attached.
    - Do NOT include a "diagram" field in your output (it is injected automatically).
    If hasDiagram=false, set hasDiagram=false.
@@ -830,7 +842,8 @@ ASSESSMENT OBJECTIVES:
 DIAGRAM RULE:
 When a question slot lists hasDiagram=true with a diagram JSON, your question text MUST
 reference the exact values shown in that diagram (coordinates, side lengths, labels, etc.).
-Do NOT output a "diagram" field — diagrams are injected automatically from the specs above.
+It is critical that the question text matches the diagram visual.
+Do NOT output a "diagram" field in your JSON.
 Do NOT invent different numbers than what the diagram shows.`
 
   // Phase 2 schema deliberately excludes the diagram field.
