@@ -72,6 +72,53 @@ export function normalizeDiagram(raw: unknown): DiagramSpec | undefined {
         }).filter((pair: unknown[]) => pair[0] && pair[1])
       }
     }
+
+    // Auto-repair: if parallel/perpendicular references a 2-letter segment name (e.g. "PQ")
+    // but the corresponding segment {from:"P", to:"Q"} is missing, add it if both endpoints exist.
+    // This fixes the case where AI provides parallel=["PQ","RS"] but forgets to list PQ and RS segments.
+    const existingSegments = Array.isArray(d.segments)
+      ? (d.segments as Record<string, unknown>[])
+      : []
+    const pointsDict = d.points as Record<string, unknown>
+    const segPairExists = (a: string, b: string) =>
+      existingSegments.some(s => (s.from === a && s.to === b) || (s.from === b && s.to === a))
+
+    const segNamesToRepair = new Set<string>()
+    for (const key of ['parallel', 'perpendicular'] as const) {
+      if (Array.isArray(d[key])) {
+        for (const pair of d[key] as [string, string][]) {
+          segNamesToRepair.add(pair[0])
+          segNamesToRepair.add(pair[1])
+        }
+      }
+    }
+
+    const addedSegments: Array<{ from: string; to: string }> = []
+    for (const segName of segNamesToRepair) {
+      if (segName.length === 2) {
+        const [p1, p2] = segName.split('')
+        if (pointsDict[p1] && pointsDict[p2] && !segPairExists(p1, p2)) {
+          addedSegments.push({ from: p1, to: p2 })
+        }
+      }
+    }
+    if (addedSegments.length > 0) {
+      d.segments = [...existingSegments, ...addedSegments]
+    }
+
+    // After repair attempt: if parallel still references segments with no endpoints in points dict,
+    // reject the diagram so the text-based fallback can generate a complete one instead.
+    if (Array.isArray(d.parallel) && (d.parallel as [string, string][]).length > 0) {
+      const allSegNames = (d.segments as Record<string, unknown>[]).map(s => `${s.from}${s.to}`)
+      const allSegNamesRev = (d.segments as Record<string, unknown>[]).map(s => `${s.to}${s.from}`)
+      const hasOrphanParallel = (d.parallel as [string, string][]).some(
+        ([s1, s2]) =>
+          !allSegNames.includes(s1) && !allSegNamesRev.includes(s1) ||
+          !allSegNames.includes(s2) && !allSegNamesRev.includes(s2)
+      )
+      if (hasOrphanParallel) return undefined
+    }
+
     return raw as DiagramSpec
   }
   if (dt === 'geometric_shape') {
