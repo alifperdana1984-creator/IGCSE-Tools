@@ -734,16 +734,15 @@ ASSESSMENT OBJECTIVES:
   if (diagramQuestions.length > 0) {
     onLog?.(`Phase 3: rendering ${diagramQuestions.length} diagrams…`)
     await Promise.all(questions.map(async (q) => {
-              if (q.hasDiagram) {
-          // 1. Try Deterministic Render
-          const deterministicTikz = renderDiagram(q)
-          if (deterministicTikz) {
-            q.diagram = { diagramType: 'tikz', code: deterministicTikz }
-          } else {
-            // 2. Fallback to AI-generated TikZ
-            const tikzCode = await generateTikzCode(q, config.subject, model, ai, onLog)
-            if (tikzCode) q.diagram = { diagramType: 'tikz', code: tikzCode }
-          }
+      if (q.hasDiagram) {
+        // 1. Try Deterministic Render
+        const deterministicTikz = renderDiagram(q)
+        if (deterministicTikz) {
+          q.diagram = { diagramType: 'tikz', code: deterministicTikz }
+        } else {
+          // 2. Fallback to AI-generated TikZ
+          const tikzCode = await generateTikzCode(q, config.subject, model, ai, onLog)
+          if (tikzCode) q.diagram = { diagramType: 'tikz', code: tikzCode }
         }
       }
     }))
