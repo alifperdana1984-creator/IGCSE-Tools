@@ -840,11 +840,32 @@ TYPE "parallel_lines" — required fields: type, line1, line2, transversal, angl
              "constraints":["parallel_lines"], "givens":["angle_at_A=65"], "unknowns":["angle_at_B"] }
   RULE: line1 and line2 MUST have the same direction vector (truly parallel).
 
+DSL QUALITY RULES (STRICTLY ENFORCE — violations cause rendering failure):
+
+LABELS:
+- Use ONLY single letters: A, B, C, O, P, Q (never "OABC", "AB1", "angle_AB110")
+- labels{} values must be single LaTeX strings: "A", "B", "5\\text{ cm}", "65^\\circ"
+- NEVER combine multiple pieces of information into one label
+- Angle labels go in the "labels" map keyed by vertex letter only (e.g. labels{"A":"65^\\circ"})
+
+GEOMETRY QUALITY:
+- Triangle: choose coordinates so the base is roughly horizontal and the triangle looks balanced
+  (not extremely skewed). Avoid side ratios larger than 3:1.
+- Circle: center at [0,0] whenever possible; use radius values 3–6 for clean rendering.
+- Parallel_lines: line1 and line2 MUST be horizontal (same y-direction).
+  Use line1=[[0,0],[4,0]] and line2=[[0,3],[4,3]] as the canonical form.
+  Transversal MUST cross both lines and be clearly angled (not near-vertical or near-horizontal):
+  use a slope between 0.5 and 2.0 (30°–65° from horizontal).
+- Use clean integer or simple decimal coordinates (multiples of 0.5).
+- Avoid coordinates beyond ±8 in any direction.
+
 ABSOLUTE RULES:
 1. Coordinates must be numbers. Constraints must be geometrically satisfied by the coordinates.
 2. DO NOT set rightAngleAt unless the dot product of the two edge vectors is exactly 0.
 3. hasDiagram=true REQUIRES a valid diagramDSL. If coordinates cannot satisfy constraints, set hasDiagram=false.
 4. The diagramDSL "unknowns" are what the student computes — those values must NOT appear in the question text.
+5. givens[] must list ONLY values that appear in the diagram — each entry is a simple "KEY=value" string.
+6. unknowns[] must list ONLY the values the student is asked to compute (e.g. "AC", "angle_A", "angle_at_B").
 
 SUB-TOPIC DIVERSITY (strictly enforce):
 - Each slot MUST test a DIFFERENT sub-topic or skill within ${config.topic}.
@@ -970,12 +991,25 @@ Return EXACTLY ${config.count} slots.`;
   // Normalise slots — DSL only; legacy diagramData path is removed.
   const validTypes = ["mcq", "short_answer", "structured"];
 
-  const DSL_RETRY_FEEDBACK = `Your DiagramDSL is invalid. You MUST include ALL required fields for your diagram type:
-- triangle: points (A, B, C as [x,y] arrays), constraints, givens, unknowns
-- circle: center ([x,y]), radius (number), points (A/B/C on circumference), constraints, givens, unknowns
-- parallel_lines: line1 ([[x1,y1],[x2,y2]]), line2 ([[x1,y1],[x2,y2]]), transversal ([[x1,y1],[x2,y2]]), angleType, constraints, givens, unknowns
+  const DSL_RETRY_FEEDBACK = `Your DiagramDSL is invalid. Fix ALL of the following:
 
-If you cannot produce a valid DSL, set hasDiagram=false instead.`;
+REQUIRED FIELDS:
+- triangle: points {A, B, C} as [x,y] arrays, constraints[], givens[], unknowns[]
+- circle: center [x,y], radius (number > 0), points {A/B/C on circumference}, constraints[], givens[], unknowns[]
+- parallel_lines: line1 [[x,y],[x,y]], line2 [[x,y],[x,y]], transversal [[x,y],[x,y]], angleType, constraints[], givens[], unknowns[]
+
+GEOMETRY RULES:
+- triangle: coordinates must form a non-degenerate triangle; if rightAngleAt is set, dot product of the two edge vectors at that vertex MUST be 0.
+- circle: every named point must lie exactly on the circle (distance to center = radius).
+- parallel_lines: line1 and line2 MUST be horizontal (y-values only vary, direction vector = [1,0]).
+  Use line1=[[0,0],[4,0]] and line2=[[0,3],[4,3]]. Transversal must have slope between 0.5 and 2.0.
+
+LABEL RULES (strictly enforce):
+- labels{} values must be SINGLE letters or simple math strings: "A", "B", "5\\text{ cm}", "65^\\circ"
+- NEVER combine multiple items: "OABC", "AB65°", "angle110" are ALL INVALID.
+- Angle arc labels belong in labels{} keyed by the vertex letter only.
+
+If you cannot satisfy all rules, set hasDiagram=false instead.`;
 
   async function retrySlotDSL(s: any, slotIndex: number): Promise<DiagramDSL | undefined> {
     const MAX_DSL_RETRIES = 5;
@@ -1147,9 +1181,9 @@ WRITING RULES:
 
 2. DIAGRAM DEPENDENCY (CRITICAL):
    - If hasDiagram=true, the question MUST BE UNSOLVABLE without the diagram.
-   - Refer to points/lines/angles shown in the diagram.
-   - Use the EXACT coordinates/values from the diagramData in your question text.
-   - Do NOT invent new numbers. The diagram is already fixed.
+   - Refer to points/lines/angles by their label letters (e.g. "point A", "angle ABC", "line segment OB").
+   - Use ONLY values listed in the slot's GIVEN VALUES block. Do NOT invent any new number.
+   - The diagram contains hidden values (UNKNOWN VALUES) — never write those in the question text.
 
 3. STRUCTURED QUESTIONS (type="structured", 4+ marks):
    - 2–4 sentence scenario/stem paragraph, then **(a)**, **(b)**, **(c)** sub-parts each with mark allocation **[n]**.
@@ -1159,43 +1193,32 @@ WRITING RULES:
    - Questions must require multi-step reasoning.
    - Avoid textbook phrasing (e.g., "Find x"). Use exam wording: "Calculate the value of x. Show your working."
    - FORBIDDEN: Single-step Pythagoras, trivial angle finding, recall-only geometry facts without application.
-   
-   ABSOLUTE RULES (DO NOT VIOLATE):
+   - GEOMETRY: Combine at least TWO of: angle reasoning, algebra, length calculation, proof/justification.
+   - CIRCLE: Do not ask "why angle is 90°". Must include calculation or reasoning + another concept.
 
-   1. If a diagram is provided:
-      - The question MUST require the diagram to solve
-      - The student must extract at least one value from the diagram
-      - MANDATORY: The diagram contains information NOT repeated in text.
-
-   2. FORBIDDEN:
-      - Single-step calculations
-      - Direct Pythagoras (unless part of multi-step)
-      - "Find x" style questions without context
-
-   3. REQUIRED:
-      - Minimum 2 reasoning steps
-      - Hidden concept (not explicitly stated)
-      - Real-world or unfamiliar context where possible
-
-   4. GEOMETRY QUESTIONS:
-      MUST combine at least TWO of: angle reasoning, algebra, length calculation, proof/justification.
-
-   5. CIRCLE QUESTIONS: Do not ask "why angle is 90". Must include calculation or reasoning + another concept.
-4. MCQ QUESTIONS: 4 options in "options" array (no letter prefix). "answer" = only "A"/"B"/"C"/"D".
+5. MCQ QUESTIONS: 4 options in "options" array (no letter prefix). "answer" = only "A"/"B"/"C"/"D".
    All distractors must be plausible misconceptions. Math in options: wrap in $...$.
 
-5. SHORT ANSWER: 1–3 marks. No sub-parts.
+6. SHORT ANSWER: 1–3 marks. No sub-parts.
 
-6. LaTeX: ALL math expressions MUST be in $...$. Never write math as plain text.
+7. LaTeX: ALL math expressions MUST be in $...$. Never write math as plain text.
    Never use bare $ as currency — write "USD 1500" or just "1500".
 
-7. syllabusObjective: "REF – objective statement" format. ONE sentence.
+8. syllabusObjective: "REF – objective statement" format. ONE sentence.
 
-8. assessmentObjective: "AO1" | "AO2" | "AO3"
+9. assessmentObjective: "AO1" | "AO2" | "AO3"
 
-9. difficultyStars: 1 | 2 | 3
+10. difficultyStars: 1 | 2 | 3
 
-10. marks: integer. MCQ always 1. Short answer 1–3. Structured = sum of sub-parts.
+11. marks: integer. MCQ always 1. Short answer 1–3. Structured = sum of sub-parts.
+
+SELF-CHECK (run mentally before writing each question — fix before outputting):
+A. List every number you used in the question text.
+B. Verify EACH number exists in the slot's GIVEN VALUES. If any number is NOT there → remove it.
+C. Confirm the diagram is REQUIRED: is there at least one value the student can only get from the diagram?
+   If not → rewrite the question so it requires the diagram.
+D. Check labels: only single letters (A, B, C, O) or standard angle notation (∠ABC). No merged text.
+E. Confirm the question needs ≥ 2 reasoning steps. If trivial → add a second part or extend the context.
 
 ANSWER FIELD RULES (CRITICAL):
 - MCQ: "answer" = single letter only: "A", "B", "C", or "D". Nothing else.
