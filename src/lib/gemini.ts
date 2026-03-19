@@ -782,6 +782,8 @@ interface QuestionIntent {
   rightAngle?: boolean;
   /** Rough magnitudes for diagram values (not exact — just guides DSL generation) */
   valueBand: "small" | "medium" | "large";
+  /** A representative given value (angle in degrees, or side length) */
+  given: number;
 }
 
 export async function generateTest(
@@ -925,38 +927,11 @@ Return EXACTLY ${config.count} slots.`;
       angleType: { type: Type.STRING, nullable: true },
       rightAngle: { type: Type.BOOLEAN, nullable: true },
       valueBand: { type: Type.STRING },
+      given: { type: Type.NUMBER },
     },
-    required: ["skillTested", "diagramType", "valueBand"],
+    required: ["skillTested", "diagramType", "valueBand", "given"],
   };
 
-  const dslSchema = {
-    type: Type.OBJECT,
-    properties: {
-      type: { type: Type.STRING },
-      points: {
-        type: Type.OBJECT,
-        nullable: true,
-        properties: {
-          A: { type: Type.ARRAY, items: { type: Type.NUMBER }, nullable: true },
-          B: { type: Type.ARRAY, items: { type: Type.NUMBER }, nullable: true },
-          C: { type: Type.ARRAY, items: { type: Type.NUMBER }, nullable: true },
-          D: { type: Type.ARRAY, items: { type: Type.NUMBER }, nullable: true },
-        },
-      },
-      rightAngleAt: { type: Type.STRING, nullable: true },
-      center: { type: Type.ARRAY, items: { type: Type.NUMBER }, nullable: true },
-      radius: { type: Type.NUMBER, nullable: true },
-      line1: { type: Type.ARRAY, items: { type: Type.ARRAY, items: { type: Type.NUMBER } }, nullable: true },
-      line2: { type: Type.ARRAY, items: { type: Type.ARRAY, items: { type: Type.NUMBER } }, nullable: true },
-      transversal: { type: Type.ARRAY, items: { type: Type.ARRAY, items: { type: Type.NUMBER } }, nullable: true },
-      angleType: { type: Type.STRING, nullable: true },
-      constraints: { type: Type.ARRAY, items: { type: Type.STRING }, nullable: true },
-      givens: { type: Type.ARRAY, items: { type: Type.STRING }, nullable: true },
-      unknowns: { type: Type.ARRAY, items: { type: Type.STRING }, nullable: true },
-      labels: { type: Type.OBJECT, nullable: true },
-    },
-    required: ["type", "givens", "unknowns"],
-  };
 
   /**
    * Step 1: AI decides what the question will ask, which diagram type fits best,
@@ -989,6 +964,7 @@ Rules:
 - angleType: only for parallel_lines — one of: corresponding | alternate | co-interior
 - rightAngle: only for triangle — true if the triangle should have a right angle
 - valueBand: "small" (lengths 2–4, angles 30–45°) | "medium" (lengths 4–7, angles 45–65°) | "large" (lengths 6–10, angles 60–75°)
+- given: a single representative numeric value for this diagram (angle in degrees for parallel_lines, side length or radius for triangle/circle, coordinate value for coordinate_geometry). Integer between 2 and 75.
 
 The diagram type MUST match the skill being tested.`;
 
@@ -1003,9 +979,10 @@ The diagram type MUST match the skill being tested.`;
       const parsed = safeJsonParse(response.text || "{}");
       const validDiagramTypes = ["triangle", "circle", "parallel_lines", "coordinate_geometry"];
       const validValueBands = ["small", "medium", "large"];
-      if (parsed.skillTested && validDiagramTypes.includes(parsed.diagramType) && validValueBands.includes(parsed.valueBand)) {
-        onLog?.(`[Intent] Slot ${slotIndex}: ${parsed.diagramType} — "${parsed.skillTested}" (${parsed.valueBand})`);
-        return parsed as QuestionIntent;
+      const givenVal = typeof parsed.given === "number" && parsed.given >= 2 && parsed.given <= 75 ? parsed.given : null;
+      if (parsed.skillTested && validDiagramTypes.includes(parsed.diagramType) && validValueBands.includes(parsed.valueBand) && givenVal) {
+        onLog?.(`[Intent] Slot ${slotIndex}: ${parsed.diagramType} — "${parsed.skillTested}" (${parsed.valueBand}, given=${givenVal})`);
+        return { ...parsed, given: givenVal } as QuestionIntent;
       }
     } catch {
       /* fall through */
@@ -1013,137 +990,88 @@ The diagram type MUST match the skill being tested.`;
 
     // Fallback: sensible intent derived from topic hint
     onLog?.(`[Intent] Slot ${slotIndex}: using fallback intent (type=${typeHint})`);
+    const fallbackGivens = [35, 50, 65, 45, 55, 40, 60, 70];
     return {
       skillTested: `apply ${typeHint.replace("_", " ")} properties to find a missing value`,
       diagramType: typeHint as QuestionIntent["diagramType"],
       valueBand: ["small", "medium", "large"][slotIndex % 3] as QuestionIntent["valueBand"],
+      given: fallbackGivens[slotIndex % fallbackGivens.length],
       ...(typeHint === "parallel_lines" ? { angleType: (["corresponding", "alternate", "co-interior"] as const)[slotIndex % 3] } : {}),
       ...(typeHint === "triangle" ? { rightAngle: slotIndex % 2 === 0 } : {}),
     };
   }
 
   /**
-   * Step 2: AI generates a valid DiagramDSL guided by the intent from Step 1.
-   * Returns null if both attempts fail validation.
+   * Step 2: Deterministic DSL builder — no AI call, guaranteed valid geometry.
+   * `seed` varies per slot for diversity (based on slot index).
+   * `intent.given` provides the key numeric value (angle or length) chosen in Step 1.
    */
-  async function generateDSLFromIntent(intent: QuestionIntent, topic: string, slotIndex: number): Promise<DiagramDSL | null> {
-    const valueBandGuide = {
-      small:  "Use integer lengths 2–4 cm and angles 30°–45°. Keep coordinates in range [0, 5].",
-      medium: "Use integer lengths 4–7 cm and angles 45°–65°. Keep coordinates in range [0, 8].",
-      large:  "Use integer lengths 6–10 cm and angles 60°–75°. Keep coordinates in range [0, 12].",
-    }[intent.valueBand];
+  function buildDSL(intent: QuestionIntent, seed: number): DiagramDSL {
+    const g = intent.given;
 
-    const typeGuide: Record<QuestionIntent["diagramType"], string> = {
-      triangle: `TYPE "triangle":
-Required: type, points (A, B, C), constraints, givens, unknowns.
-- points must form a valid non-degenerate triangle (triangle inequality satisfied).
-- givens[]: list each known side/angle as "AB=5", "angle_A=40".
-- unknowns[]: list what the student must find: "AC", "angle_B", "area", "perimeter".
-${intent.rightAngle ? `- This triangle HAS a right angle. Use rightAngleAt ("A"|"B"|"C").
-  CRITICAL: if rightAngleAt="B", then vectors BA and BC must satisfy BA·BC = 0.
-  Safe right-angle coordinates: A=[0,a], B=[0,0], C=[b,0] → BA=(0,a), BC=(b,0) → dot=0 ✓` : "- No right angle required (oblique triangle)."}
-- Avoid side ratios > 3:1. Balance the triangle visually.`,
-
-      circle: `TYPE "circle":
-Required: type, center, radius (>0), points (A, B, C on circumference), constraints, givens, unknowns.
-- center: use [0,0].
-- Every named point MUST satisfy distance(point, center) = radius exactly.
-  Example with radius=5: A=[-5,0], B=[5,0] (on circumference) ✓
-- givens[]: "radius=5".
-- unknowns[]: "angle_ACB", "central_angle", "circumference", or "area".
-- For Thales theorem: AB is diameter → A=[-r,0], B=[r,0], C=[0,r] gives angle_ACB=90°.`,
-
-      parallel_lines: `TYPE "parallel_lines":
-Required: type, line1, line2, transversal, angleType, constraints, givens, unknowns.
-- line1 and line2 MUST be horizontal (same y-direction): use [[0,y1],[5,y1]] form.
-- transversal MUST cross BOTH lines at different x positions. Use slope between 0.5 and 2.0.
-  Safe example: line1=[[0,0],[5,0]], line2=[[0,3],[5,3]], transversal=[[1,-1],[4,5]]
-- angleType: "${intent.angleType ?? "alternate"}"
-- givens[]: "angle_at_A=65" (the known angle).
-- unknowns[]: "angle_at_B" (what the student finds).`,
-
-      coordinate_geometry: `TYPE "coordinate_geometry":
-Required: type, points (at least A and B), constraints, givens, unknowns.
-- Use clean integer or half-integer coordinates. Avoid all-zero or trivial cases.
-- givens[]: "A=(1,2)", "B=(5,6)".
-- unknowns[]: choose from: "length", "midpoint", "slope".`,
-    };
-
-    const dslPrompt = `You are generating a DiagramDSL for a Cambridge IGCSE ${config.subject} question.
-
-════════════════════════
-QUESTION INTENT
-════════════════════════
-Topic: "${topic}"
-Skill tested: "${intent.skillTested}"
-Diagram type: "${intent.diagramType}"
-${intent.angleType ? `Angle relationship: ${intent.angleType}` : ""}
-${intent.rightAngle !== undefined ? `Right angle: ${intent.rightAngle}` : ""}
-
-════════════════════════
-VALUE GUIDE
-════════════════════════
-${valueBandGuide}
-
-════════════════════════
-DSL SPECIFICATION
-════════════════════════
-${typeGuide[intent.diagramType]}
-
-════════════════════════
-HARD RULES
-════════════════════════
-1. ALL coordinates must be numbers (no variables).
-2. givens[] and unknowns[] must be non-empty arrays.
-3. unknowns[] must contain ONLY keys that mathEngine can compute:
-   - triangle: "AB" | "BC" | "CA" | "angle_A" | "angle_B" | "angle_C" | "area" | "perimeter"
-   - circle: "angle_ACB" | "inscribed_angle" | "central_angle" | "circumference" | "area"
-   - parallel_lines: "angle_at_B"
-   - coordinate_geometry: "length" | "midpoint" | "slope"
-4. The diagram must be REQUIRED to solve — at least one value must only be in the diagram.
-5. Labels: use ONLY single letters (A, B, C, O). Never merge text.
-
-Return ONLY a valid JSON DiagramDSL object. No explanation. No markdown.`;
-
-    // Attempt up to 2 times: first attempt, then one retry with validation errors appended
-    let previousErrors: string | null = null;
-    for (let attempt = 0; attempt < 2; attempt++) {
-      try {
-        const promptWithFeedback = previousErrors
-          ? `${dslPrompt}\n\nPREVIOUS ATTEMPT FAILED VALIDATION. Fix these errors:\n${previousErrors}`
-          : dslPrompt;
-
-        const response = await ai.models.generateContent({
-          model,
-          contents: [{ role: "user", parts: [{ text: promptWithFeedback }] }],
-          config: { responseMimeType: "application/json", maxOutputTokens: 1024, temperature: 0.3, responseSchema: dslSchema },
-        });
-        const usage = getGeminiUsage(response);
-        if (usage) onUsage?.(model, usage.inputTokens, usage.outputTokens);
-
-        const parsed = safeJsonParse(response.text || "{}");
-        if (!parsed.type) {
-          onLog?.(`[DSL] Slot ${slotIndex} attempt ${attempt + 1}: no type field — skipping`);
-          continue;
-        }
-
-        const validation = validateDSL(parsed as DiagramDSL);
-        if (validation.valid) {
-          onLog?.(`[DSL] Slot ${slotIndex} attempt ${attempt + 1}: valid ✓ (${parsed.type})`);
-          return parsed as DiagramDSL;
-        }
-
-        onLog?.(`[DSL] Slot ${slotIndex} attempt ${attempt + 1}: invalid — ${validation.errors.join("; ")}`);
-        previousErrors = validation.errors.join("\n");
-      } catch (err) {
-        onLog?.(`[DSL] Slot ${slotIndex} attempt ${attempt + 1}: exception — ${err instanceof Error ? err.message : String(err)}`);
-      }
-
-      if (attempt < 1) await new Promise((r) => setTimeout(r, 400));
+    if (intent.diagramType === "parallel_lines") {
+      const ang = Math.max(25, Math.min(75, g));
+      const s = (seed % 3) + 1; // 1, 2, or 3
+      return {
+        type: "parallel_lines",
+        line1: [[0, 0], [10, 0]],
+        line2: [[0, 5], [10, 5]],
+        transversal: [[2 + s, -2], [8 - s, 8]],
+        angleType: intent.angleType ?? "alternate",
+        constraints: ["parallel_lines"],
+        givens: [`angle_at_A=${ang}`],
+        unknowns: ["angle_at_B"],
+      };
     }
 
-    onLog?.(`[DSL] Slot ${slotIndex}: all attempts failed — no diagram`);
-    return null;
+    if (intent.diagramType === "circle") {
+      const r = Math.max(3, Math.min(6, Math.round(g / 10) + 3 + (seed % 2)));
+      return {
+        type: "circle",
+        center: [0, 0],
+        radius: r,
+        points: { A: [-r, 0], B: [r, 0], C: [0, r] },
+        constraints: ["AB_is_diameter"],
+        givens: [`radius=${r}`],
+        unknowns: ["angle_ACB"],
+      };
+    }
+
+    if (intent.diagramType === "coordinate_geometry") {
+      const x2 = Math.max(2, Math.min(8, Math.round(g / 8) + 2 + (seed % 3)));
+      const y2 = Math.max(2, Math.min(8, Math.round(g / 10) + 3 + ((seed + 1) % 3)));
+      return {
+        type: "coordinate_geometry",
+        points: { A: [0, 0], B: [x2, y2] },
+        constraints: [],
+        givens: [`A=(0,0)`, `B=(${x2},${y2})`],
+        unknowns: ["length", "midpoint"],
+      };
+    }
+
+    // triangle (default)
+    const a = Math.max(2, Math.min(8, Math.round(g / 10) + 2 + (seed % 3)));
+    const b = Math.max(2, Math.min(8, a + 1 + (seed % 2))); // ensure a ≠ b
+    if (intent.rightAngle) {
+      return {
+        type: "triangle",
+        points: { A: [0, a], B: [0, 0], C: [b, 0] },
+        rightAngleAt: "B",
+        constraints: ["right_angle_at_B"],
+        givens: [`AB=${a}`, `BC=${b}`],
+        unknowns: ["AC", "angle_A"],
+      };
+    }
+    // Oblique triangle: non-right, balanced
+    const cx = Math.max(1, Math.round(b / 2) + (seed % 2));
+    const cy = Math.max(2, a - 1 + (seed % 2));
+    return {
+      type: "triangle",
+      points: { A: [0, 0], B: [b, 0], C: [cx, cy] },
+      constraints: [],
+      givens: [`AB=${b}`, `BC=${Math.round(Math.sqrt((b - cx) ** 2 + cy ** 2))}`],
+      unknowns: ["angle_A", "angle_B"],
+    };
   }
 
   // ── Slot normalisation — SEQUENTIAL (rate-limit safe) ───────────────────────
@@ -1159,18 +1087,19 @@ Return ONLY a valid JSON DiagramDSL object. No explanation. No markdown.`;
     let intent: QuestionIntent | undefined;
 
     if (s.hasDiagram) {
-      // Step 1 — Question Intent
+      // Step 1 — Question Intent (AI: topic → skill + diagram type + given value)
       intent = await generateQuestionIntent(s.topic ?? config.topic, i);
 
-      // Step 2+3 — DSL Generation + Validation (with retry built in)
-      const dsl = await generateDSLFromIntent(intent, s.topic ?? config.topic, i);
+      // Step 2 — Build DSL deterministically from intent (no AI, always valid geometry)
+      const dsl = buildDSL(intent, i);
 
-      if (dsl) {
-        // Step 4 — Solve (used later in writeQuestionFromDSL)
+      // Step 3 — Validate (should always pass — templates are pre-verified)
+      const validation = validateDSL(dsl);
+      if (validation.valid) {
         diagramDSL = dsl;
-        onLog?.(`[Slot ${i}] hasDiagram=true — DSL ready (${dsl.type})`);
+        onLog?.(`[Slot ${i}] hasDiagram=true — DSL ready (${dsl.type}, given=${intent.given})`);
       } else {
-        onLog?.(`[Slot ${i}] hasDiagram forced false — DSL generation failed`);
+        onLog?.(`[Slot ${i}] buildDSL produced invalid DSL (${validation.errors.join("; ")}) — no diagram`);
       }
     }
 
