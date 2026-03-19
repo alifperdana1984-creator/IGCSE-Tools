@@ -42,8 +42,8 @@ function requiresDiagramData(q: QuestionItem): boolean {
     if (text.includes(n)) copiedCount++;
   });
 
-  // If too many diagram values appear in text → BAD
-  return copiedCount < keyNumbers.length * 0.6;
+  // If too many diagram values appear in text → BAD (threshold 80%)
+  return copiedCount < keyNumbers.length * 0.8;
 }
 
 function hasMultiStepStructure(q: QuestionItem): boolean {
@@ -71,13 +71,22 @@ function hasCognitiveLoad(q: QuestionItem): boolean {
   );
 }
 
-function isAStarLevel(q: QuestionItem): boolean {
-  return (
-    q.marks >= 3 &&
-    hasMultiStepStructure(q) &&
-    hasCognitiveLoad(q) &&
-    /deduce|justify|prove|show that|explain/i.test(q.text)
-  );
+function isAStarLevel(q: QuestionItem, difficulty?: string): boolean {
+  if (difficulty === "Challenging") {
+    // Strict: all conditions required for A* level
+    return (
+      q.marks >= 3 &&
+      hasMultiStepStructure(q) &&
+      hasCognitiveLoad(q) &&
+      /deduce|justify|prove|show that|explain/i.test(q.text)
+    );
+  }
+  if (difficulty === "Medium" || difficulty === "Balanced") {
+    // Softer: multi-step structure and cognitive load sufficient
+    return hasMultiStepStructure(q) && hasCognitiveLoad(q);
+  }
+  // Easy: always pass
+  return true;
 }
 
 function requiresDiagramExtraction(q: QuestionItem): boolean {
@@ -546,6 +555,7 @@ export const PAST_PAPER_FOCUS: Record<string, string> = {
 function buildReferenceParts(
   references: Reference[],
   difficulty?: string,
+  syllabusOnly?: boolean,
 ): any[] {
   const parts: any[] = [];
   const pastPapers = references.filter((r) => r.resourceType === "past_paper");
@@ -554,7 +564,7 @@ function buildReferenceParts(
     (r) => !r.resourceType || r.resourceType === "other",
   );
 
-  if (pastPapers.length > 0) {
+  if (!syllabusOnly && pastPapers.length > 0) {
     const focusInstruction = difficulty
       ? (PAST_PAPER_FOCUS[difficulty] ?? "")
       : "";
@@ -616,7 +626,7 @@ function buildReferenceParts(
     });
   }
 
-  if (others.length > 0) {
+  if (!syllabusOnly && others.length > 0) {
     others.forEach((ref) => {
       if (
         ref.geminiFileUri &&
@@ -887,16 +897,23 @@ Return EXACTLY ${config.count} slots.`;
     required: ["slots"],
   };
 
-  const refParts: any[] =
+  // Phase 1 uses syllabus only (past papers add tokens without helping slot planning).
+  // Phase 2+ uses all references (style replication from past papers matters for writing).
+  const syllabusRefParts: any[] =
     config.references && config.references.length > 0
-      ? buildReferenceParts(config.references, config.difficulty)
+      ? buildReferenceParts(config.references, config.difficulty, true)
+      : [];
+
+  const allRefParts: any[] =
+    config.references && config.references.length > 0
+      ? buildReferenceParts(config.references, config.difficulty, false)
       : [];
 
   const rawSlots = await withRetry(
     async () => {
       const response = await ai.models.generateContent({
         model,
-        contents: { parts: [...refParts, { text: phase1Prompt }] },
+        contents: { parts: [...syllabusRefParts, { text: phase1Prompt }] },
         config: {
           responseMimeType: "application/json",
           maxOutputTokens: 16384,
@@ -1108,7 +1125,7 @@ ASSESSMENT OBJECTIVES:
     async () => {
       const response = await ai.models.generateContent({
         model,
-        contents: { parts: [...refParts, { text: phase2Prompt }] },
+        contents: { parts: [...allRefParts, { text: phase2Prompt }] },
         config: {
           responseMimeType: "application/json",
           maxOutputTokens: 65536,
@@ -1210,8 +1227,9 @@ ASSESSMENT OBJECTIVES:
     );
   }
 
-  // Phase 4.5: Auto-Regeneration Loop (Hard Validation)
-  if (questions.length > 0) {
+  // Phase 4.5: Auto-Regeneration Loop (Hard Validation — Challenging only)
+  // For Easy/Medium/Balanced the critiqueAndRefine pass (Phase 4) is sufficient.
+  if (questions.length > 0 && config.difficulty === "Challenging") {
     for (let i = 0; i < questions.length; i++) {
       let q = questions[i];
       let attempts = 0;
@@ -1219,7 +1237,7 @@ ASSESSMENT OBJECTIVES:
       while (attempts < 2) {
         const qualityCheck = enforceQuestionQuality(q);
         const tooEasy = isTooEasy(q);
-        const isAStar = isAStarLevel(q);
+        const isAStar = isAStarLevel(q, config.difficulty);
         const hasCognitive = hasCognitiveLoad(q);
 
         if (qualityCheck.isValid && !tooEasy && isAStar && hasCognitive) break;
@@ -1237,7 +1255,6 @@ ASSESSMENT OBJECTIVES:
           `Regenerating Q${i + 1} (Attempt ${attempts + 1}): ${issues.join(", ")}`,
         );
 
-        // Re-generate this specific question
         const newQ = await regenerateSingleQuestion(
           q,
           issues,
@@ -1259,7 +1276,7 @@ ASSESSMENT OBJECTIVES:
 
 /** Generates complete LaTeX/TikZ code for a single question */
 async function generateTikzCode(
-  question: { text: string; answer: string },
+  question: { text: string; answer: string; diagramType?: string; diagramData?: any },
   subject: string,
   model: string,
   ai: ReturnType<typeof getAI>,
@@ -1279,8 +1296,16 @@ IMPROVE BY:
 `
     : "";
 
+  const diagramSpecBlock =
+    question.diagramType || question.diagramData
+      ? `\nDIAGRAM SPECIFICATION:
+- Type: ${question.diagramType ?? "unspecified"}
+- Data (use these exact coordinates): ${question.diagramData ? JSON.stringify(question.diagramData) : "none"}
+`
+      : "";
+
   const prompt = `Generate a concise, exam-quality LaTeX/TikZ diagram for this ${subject} question.
-${improvementBlock}
+${improvementBlock}${diagramSpecBlock}
 QUESTION: ${question.text}
 ANSWER: ${question.answer}
 
@@ -1320,23 +1345,30 @@ async function regenerateSingleQuestion(
   ai: any,
   model: string,
 ): Promise<QuestionItem | null> {
+  const difficultyRequirements =
+    config.difficulty === "Challenging"
+      ? "Multi-step reasoning, minimum 3 steps, unfamiliar context, 4–6 marks."
+      : config.difficulty === "Medium"
+        ? "2-step reasoning, apply concepts to a given scenario, 2–4 marks."
+        : "Clear, direct, single-concept question appropriate for recall level, 1–2 marks.";
+
   const prompt = `
-    REGENERATE this specific Cambridge IGCSE question to meet A* standards.
-    
+    REGENERATE this specific Cambridge IGCSE ${config.subject} question.
+    TARGET DIFFICULTY: ${config.difficulty}
+
     PREVIOUS FAILED VERSION:
     "${original.text}"
     (Type: ${original.type}, Marks: ${original.marks})
-    
+
     ISSUES DETECTED (MUST FIX):
     ${issues.map((s) => `- ${s}`).join("\n")}
-    
+
     STRICT REQUIREMENTS:
-    1. Make it HARDER (multi-step reasoning).
-    2. Use Cambridge command words (Deduce, Show that, Explain).
+    1. Match the target difficulty: ${difficultyRequirements}
+    2. Use Cambridge command words appropriate for ${config.difficulty} difficulty.
     3. Ensure diagram is REQUIRED (if present).
-    4. Marks should reflect difficulty (3-6 marks).
-    5. Do NOT output markdown. Output ONLY the JSON object for the question.
-    
+    4. Do NOT output markdown. Output ONLY the JSON object for the question.
+
     Return JSON matching the schema:
     { "text": "...", "answer": "...", "markScheme": "...", "marks": 4, "commandWord": "...", "type": "...", "hasDiagram": ${original.hasDiagram}, "options": [...] }
   `;
@@ -1358,16 +1390,22 @@ async function regenerateSingleQuestion(
       ...sanitized,
       id: original.id,
       code: original.code,
-      diagram: undefined, // Clear diagram before regeneration attempt
+      diagram: undefined as typeof original.diagram,
       diagramType: original.diagramType,
       diagramData: original.diagramData,
       hasDiagram: original.hasDiagram,
     };
 
     if (original.hasDiagram) {
-      const newTikz = renderDiagram(updated);
-      if (newTikz) {
-        updated.diagram = { diagramType: "tikz", code: newTikz };
+      // Try deterministic render first, fall back to AI TikZ generation
+      const deterministicTikz = renderDiagram(updated);
+      if (deterministicTikz) {
+        updated.diagram = { diagramType: "tikz", code: deterministicTikz };
+      } else {
+        const aiTikz = await generateTikzCode(updated, config.subject, model, ai);
+        if (aiTikz) {
+          updated.diagram = { diagramType: "tikz", code: aiTikz };
+        }
       }
     }
     return updated;

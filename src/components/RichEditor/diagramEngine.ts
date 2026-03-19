@@ -12,7 +12,14 @@ interface TriangleData {
   B: TuplePoint;
   C: TuplePoint;
   rightAngleAt?: "A" | "B" | "C";
-  labels?: { A?: string; B?: string; C?: string };
+  labels?: {
+    A?: string;
+    B?: string;
+    C?: string;
+    AB?: string; // side label between A and B
+    BC?: string; // side label between B and C
+    CA?: string; // side label between C and A
+  };
 }
 
 interface CircleData {
@@ -60,6 +67,18 @@ export function renderDiagram(question: {
       case "parallel lines geometry":
         return renderParallelLines(question.diagramData);
 
+      case "right triangle":
+      case "right_triangle":
+        return renderTriangle(question.diagramData);
+
+      case "isosceles triangle":
+      case "isosceles_triangle":
+        return renderTriangle(question.diagramData);
+
+      case "sector":
+        // Sector requires AI generation — fall through
+        return null;
+
       default:
         // Unknown type, fallback to AI generation
         return null;
@@ -101,10 +120,13 @@ function renderTriangle(data: TriangleData): string | null {
     return null;
   }
 
-  // Calculate centroids or midpoints if needed for labeling, but standard positioning works for now.
+  // Compute centroid to derive outward label directions for each vertex
+  const gx = (A[0] + B[0] + C[0]) / 3;
+  const gy = (A[1] + B[1] + C[1]) / 3;
+  const dirA = tikzLabelDir(A[0] - gx, A[1] - gy);
+  const dirB = tikzLabelDir(B[0] - gx, B[1] - gy);
+  const dirC = tikzLabelDir(C[0] - gx, C[1] - gy);
 
-  // Construct TikZ
-  // We use the 'standalone' class for consistent rendering pipeline compatibility
   let tikz = `
   \\coordinate (A) at (${A[0]},${A[1]});
   \\coordinate (B) at (${B[0]},${B[1]});
@@ -112,17 +134,31 @@ function renderTriangle(data: TriangleData): string | null {
 
   \\draw[thick] (A) -- (B) -- (C) -- cycle;
 
-  \\node[above left] at (A) {$${labels?.A ?? "A"}$};
-  \\node[below left] at (B) {$${labels?.B ?? "B"}$};
-  \\node[below right] at (C) {$${labels?.C ?? "C"}$};
+  \\node[${dirA}] at (A) {$${labels?.A ?? "A"}$};
+  \\node[${dirB}] at (B) {$${labels?.B ?? "B"}$};
+  \\node[${dirC}] at (C) {$${labels?.C ?? "C"}$};
 `;
+
+  // Optional side length labels placed outward from centroid
+  const g: TuplePoint = [gx, gy];
+  if (labels?.AB) {
+    const mid: TuplePoint = [(A[0] + B[0]) / 2, (A[1] + B[1]) / 2];
+    tikz += `  \\node[${sideOutDir(mid, g)}] at (${mid[0]},${mid[1]}) {$${labels.AB}$};\n`;
+  }
+  if (labels?.BC) {
+    const mid: TuplePoint = [(B[0] + C[0]) / 2, (B[1] + C[1]) / 2];
+    tikz += `  \\node[${sideOutDir(mid, g)}] at (${mid[0]},${mid[1]}) {$${labels.BC}$};\n`;
+  }
+  if (labels?.CA) {
+    const mid: TuplePoint = [(C[0] + A[0]) / 2, (C[1] + A[1]) / 2];
+    tikz += `  \\node[${sideOutDir(mid, g)}] at (${mid[0]},${mid[1]}) {$${labels.CA}$};\n`;
+  }
 
   if (rightAngleAt) {
     let anglePath = "";
     if (rightAngleAt === "A") anglePath = "C--A--B";
     if (rightAngleAt === "B") anglePath = "A--B--C";
     if (rightAngleAt === "C") anglePath = "B--C--A";
-
     if (anglePath) {
       tikz += `  \\draw pic[draw, angle radius=3mm] {right angle = ${anglePath}};\n`;
     }
@@ -144,21 +180,24 @@ function renderCircle(data: CircleData): string | null {
   if (typeof radius !== "number" || radius <= 0) return null;
   if (!validateCircle(data)) return null;
 
+  // Derive C label direction from center → C vector
+  const dirC = tikzLabelDir(C[0] - center[0], C[1] - center[1]);
+
   let tikz = `
   \\coordinate (O) at (${center[0]},${center[1]});
   \\coordinate (A) at (${A[0]},${A[1]});
   \\coordinate (B) at (${B[0]},${B[1]});
   \\coordinate (C) at (${C[0]},${C[1]});
 
-  \\draw[thick] (O) circle (${radius}); 
+  \\draw[thick] (O) circle (${radius});
   \\draw[thick] (A) -- (B) node[midway, below] {}; % Diameter line
   \\draw[thick] (A) -- (C) -- (B); % Triangle
 
   \\fill (O) circle (1.5pt);
-  \\node[below right] at (O) {$${labels?.O ?? "O"}$}; 
-  \\node[left] at (A) {$${labels?.A ?? "A"}$}; 
-  \\node[right] at (B) {$${labels?.B ?? "B"}$}; 
-  \\node[above] at (C) {$${labels?.C ?? "C"}$}; 
+  \\node[below right] at (O) {$${labels?.O ?? "O"}$};
+  \\node[left] at (A) {$${labels?.A ?? "A"}$};
+  \\node[right] at (B) {$${labels?.B ?? "B"}$};
+  \\node[${dirC}] at (C) {$${labels?.C ?? "C"}$};
 `;
 
   // Thales' theorem: if AB is diameter, C is always 90 degrees
@@ -204,37 +243,43 @@ function renderParallelLines(data: ParallelLinesData): string | null {
   ${int1 ? `\\fill (I1) circle (1.5pt) node[above right] {A};` : ""}
   ${int2 ? `\\fill (I2) circle (1.5pt) node[below right] {B};` : ""}
 
-  % Angle Marking (Randomized)
-  ${ (() => { 
-    const angle = Math.floor(Math.random() * 30) + 60; 
-    
+  % Angle Marking (geometry-derived)
+  ${ (() => {
     if (!int1 || !int2) return "";
 
-    // Default: one angle
+    // Compute the true acute angle between the transversal and line1
+    const tvDx = t2[0] - t1[0];
+    const tvDy = t2[1] - t1[1];
+    const l1Dx = p2[0] - p1[0];
+    const l1Dy = p2[1] - p1[1];
+    const tvRad = Math.atan2(tvDy, tvDx);
+    const l1Rad = Math.atan2(l1Dy, l1Dx);
+    let angleDeg = Math.abs(((tvRad - l1Rad) * 180) / Math.PI);
+    if (angleDeg > 180) angleDeg = 360 - angleDeg;
+    if (angleDeg > 90) angleDeg = 180 - angleDeg;
+    const angle = Math.round(angleDeg);
+    if (angle < 1) return ""; // degenerate — skip arc
+
+    // Default: mark one angle at the first intersection
     let code = `
     \\draw pic[draw, "${angle}^\\circ", angle eccentricity=1.5] {angle = I2--I1--${p2[0] > p1[0] ? `(${p2[0]},${p2[1]})` : `(${p1[0]},${p1[1]})`}};
     `;
 
-    // Intelligent Angle Matching based on type
     if (angleType === "corresponding") {
-      // Same position relative to intersection
+      // Same position relative to both intersections
       code += `\\draw pic[draw, "${angle}^\\circ", angle eccentricity=1.5] {angle = ${p2[0] > p1[0] ? `(${p4[0]},${p4[1]})` : `(${p3[0]},${p3[1]})`}--I2--I1};`;
-    } 
+    }
     else if (angleType === "alternate") {
       // Z-pattern (opposite side)
       code += `\\draw pic[draw, "${angle}^\\circ", angle eccentricity=1.5] {angle = I1--I2--${p2[0] > p1[0] ? `(${p3[0]},${p3[1]})` : `(${p4[0]},${p4[1]})`}};`;
     }
     else if (angleType === "co-interior") {
-      // C-pattern (same side interior, sum to 180)
+      // C-pattern (same side interior, sum to 180°)
       const suppl = 180 - angle;
       code += `\\draw pic[draw, "${suppl}^\\circ", angle eccentricity=1.5] {angle = I1--I2--${p2[0] > p1[0] ? `(${p4[0]},${p4[1]})` : `(${p3[0]},${p3[1]})`}};`;
     }
-    else {
-      // Default random second angle if not specified
-      // code += ... (omitted to keep clean)
-    }
 
-    return code; 
+    return code;
   })() }
 
   % Mark parallel arrows
@@ -267,6 +312,24 @@ function validateLine(l: any): l is [TuplePoint, TuplePoint] {
 
 const dist = (p1: TuplePoint, p2: TuplePoint) =>
   Math.sqrt(Math.pow(p2[0] - p1[0], 2) + Math.pow(p2[1] - p1[1], 2));
+
+/** Maps a direction vector to a TikZ anchor string (8-sector compass). */
+function tikzLabelDir(dx: number, dy: number): string {
+  const angle = (Math.atan2(dy, dx) * 180) / Math.PI; // -180 to 180
+  if (angle > 157.5 || angle <= -157.5) return "left";
+  if (angle > 112.5) return "above left";
+  if (angle > 67.5)  return "above";
+  if (angle > 22.5)  return "above right";
+  if (angle > -22.5) return "right";
+  if (angle > -67.5) return "below right";
+  if (angle > -112.5) return "below";
+  return "below left";
+}
+
+/** Returns the TikZ anchor for a side label, pointing outward from the centroid. */
+function sideOutDir(mid: TuplePoint, g: TuplePoint): string {
+  return tikzLabelDir(mid[0] - g[0], mid[1] - g[1]);
+}
 
 function validateTriangle(
   A: TuplePoint,
@@ -355,7 +418,7 @@ function validateParallel(
 
 function wrapTikz(content: string): string {
   return `\\documentclass[tikz,border=4mm]{standalone}
-\\usetikzlibrary{calc,angles,quotes,arrows.meta}
+\\usetikzlibrary{calc,angles,quotes,arrows.meta,patterns}
 \\begin{document}
 \\begin{tikzpicture}[scale=0.8, every node/.style={scale=0.9}]
 ${content}
