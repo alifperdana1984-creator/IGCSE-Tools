@@ -158,6 +158,8 @@ export function sanitizeQuestion(q: any): Omit<QuestionItem, "id"> {
     type,
     hasDiagram: wantsDiagram,
     ...(diagram ? { diagram } : {}),
+    ...(q.diagramType ? { diagramType: q.diagramType } : {}),
+    ...(q.diagramData ? { diagramData: q.diagramData } : {}),
     ...(diagramMissing ? { diagramMissing } : {}),
     ...(type === "mcq" && options.length === 4 ? { options } : {}),
     ...(q.code ? { code: q.code } : {}),

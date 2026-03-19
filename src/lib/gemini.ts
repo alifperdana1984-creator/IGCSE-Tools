@@ -4,6 +4,7 @@ import type { Reference } from './ai'
 import type { UsageCallback } from './ai'
 import { sanitizeQuestion, generateQuestionCode as sharedGenerateQuestionCode } from './sanitize'
 import { parseJsonWithRecovery } from './json'
+import { renderDiagram } from './diagram/diagramEngine'
 
 function getAI(apiKey?: string) {
   if (!apiKey) {
@@ -460,6 +461,8 @@ interface QuestionSlot {
   questionType: 'mcq' | 'short_answer' | 'structured'
   /** Whether this question needs a diagram */
   hasDiagram: boolean
+  diagramType?: string
+  diagramData?: any
 }
 
 export async function generateTest(
@@ -499,10 +502,26 @@ TASK: For each of the ${config.count} question slots, output:
 - questionType: one of "mcq", "short_answer", "structured" — match the configured type
 - hasDiagram: true only if a visual diagram is VITAL for this sub-topic.
 
+DIAGRAM DATA (If hasDiagram=true):
+You must provide structured JSON in 'diagramData' for the deterministic renderer.
+NEVER write vague descriptions. Use EXACT coordinates.
+
+Supported diagramType: "triangle"
+
+Example (Triangle):
+{
+  "diagramType": "triangle",
+  "diagramData": {
+    "A": [0, 4],
+    "B": [0, 0],
+    "C": [3, 0],
+    "rightAngleAt": "B"
+  }
+}
+
 SUB-TOPIC DIVERSITY (strictly enforce):
 - Each slot MUST test a DIFFERENT sub-topic or skill within ${config.topic}.
 - Spread across the widest possible range.
-
 Return EXACTLY ${config.count} slots.`
 
   const phase1Schema = {
@@ -517,8 +536,19 @@ Return EXACTLY ${config.count} slots.`
             topic:        { type: Type.STRING },
             questionType: { type: Type.STRING },
             hasDiagram:   { type: Type.BOOLEAN },
+            diagramType:  { type: Type.STRING, nullable: true },
+            diagramData:  {
+              type: Type.OBJECT,
+              nullable: true,
+              properties: {
+                A: { type: Type.ARRAY, items: { type: Type.NUMBER } },
+                B: { type: Type.ARRAY, items: { type: Type.NUMBER } },
+                C: { type: Type.ARRAY, items: { type: Type.NUMBER } },
+                rightAngleAt: { type: Type.STRING, nullable: true }
+              }
+            },
           },
-          required: ['index', 'topic', 'questionType', 'hasDiagram'],
+          required: ['index', 'topic', 'questionType', 'hasDiagram']
         },
       },
     },
@@ -562,6 +592,8 @@ Return EXACTLY ${config.count} slots.`
     topic: s.topic ?? config.topic,
     questionType: (validTypes.includes(s.questionType) ? s.questionType : (cleanType === 'mixed' ? 'short_answer' : cleanType)) as QuestionSlot['questionType'],
     hasDiagram: Boolean(s.hasDiagram),
+    diagramType: s.diagramType,
+    diagramData: s.diagramData,
   }))
 
   // ── Phase 2: Write questions ─────────────────────────────────────────────
@@ -570,7 +602,11 @@ Return EXACTLY ${config.count} slots.`
 
   // Build per-slot diagram context to inject into the Phase 2 prompt
   const slotDescriptions = slots.map(s => {
-    return `Q${s.index + 1}: topic="${s.topic}", type="${s.questionType}"${s.hasDiagram ? ' (needs diagram)' : ''}`
+    let desc = `Q${s.index + 1}: topic="${s.topic}", type="${s.questionType}"${s.hasDiagram ? ' (needs diagram)' : ''}`;
+    if (s.hasDiagram && s.diagramData) {
+      desc += `\n   MANDATORY DIAGRAM DATA: ${JSON.stringify(s.diagramData)}\n   (Write the question using THESE EXACT VALUES. Do not change them.)`;
+    }
+    return desc;
   }).join('\n\n')
 
   const phase2Prompt = `Generate a Cambridge IGCSE ${config.subject} assessment.
@@ -590,8 +626,8 @@ WRITING RULES:
 1. Write EXACTLY ${config.count} questions, one per slot, in slot order.
 
 2. DIAGRAMS: If a slot has hasDiagram=true and provides a diagram JSON above:
-   - Write the question text freely. A diagram will be generated LATER based on your text.
-   - Be descriptive in the question text so the diagram generator knows what to draw.
+   - Use the EXACT coordinates/values from the JSON in your question text.
+   - Do NOT invent new numbers. The diagram is already fixed.
 
 3. STRUCTURED QUESTIONS (type="structured", 4+ marks):
    - 2–4 sentence scenario/stem paragraph, then **(a)**, **(b)**, **(c)** sub-parts each with mark allocation **[n]**.
@@ -638,6 +674,8 @@ ASSESSMENT OBJECTIVES:
       commandWord:        { type: Type.STRING },
       type:               { type: Type.STRING },
       hasDiagram:         { type: Type.BOOLEAN },
+      diagramType:        { type: Type.STRING, nullable: true },
+      diagramData:        { type: Type.OBJECT, nullable: true },
       syllabusObjective:  { type: Type.STRING, nullable: true },
       assessmentObjective:{ type: Type.STRING, nullable: true },
       difficultyStars:    { type: Type.NUMBER, nullable: true },
@@ -677,10 +715,12 @@ ASSESSMENT OBJECTIVES:
   let questions: QuestionItem[] = (rawQuestions.questions ?? []).map((q, i) => {
     const sanitized = sanitizeQuestion(q)
     const slot = slots[i]
-    const hasDiagram = slot?.hasDiagram || sanitized.hasDiagram
+    const hasDiagram = slot?.hasDiagram || sanitized.hasDiagram || !!slot?.diagramData
     return {
       ...sanitized,
       hasDiagram,
+      diagramType: slot?.diagramType ?? sanitized.diagramType,
+      diagramData: slot?.diagramData ?? sanitized.diagramData,
       id: crypto.randomUUID(),
       code: sharedGenerateQuestionCode(config.subject, {
         text: sanitized.text,
@@ -692,11 +732,19 @@ ASSESSMENT OBJECTIVES:
   // ── Phase 3: Generate TikZ diagrams for questions that need them ─────────
   const diagramQuestions = questions.filter(q => q.hasDiagram)
   if (diagramQuestions.length > 0) {
-    onLog?.(`Phase 3: generating LaTeX/TikZ code for ${diagramQuestions.length} diagrams…`)
+    onLog?.(`Phase 3: rendering ${diagramQuestions.length} diagrams…`)
     await Promise.all(questions.map(async (q) => {
       if (q.hasDiagram) {
-        const tikzCode = await generateTikzCode(q, config.subject, model, ai, onLog)
-        if (tikzCode) q.diagram = { diagramType: 'tikz', code: tikzCode }
+        // 1. Try Deterministic Render
+        const deterministicTikz = renderDiagram(
+          q.diagram = { diagramType: 'tikz', code: deterministicTikz }
+        } else {
+          // 2. eeded
+          } else {
+            const tikzCode = await generateTikzCode(q, config.subject, model, ai, onLog)
+            if (tikzCode) q.diagram = { diagramType: 'tikz', code: tikzCode }
+          }
+        }
       }
     }))
   }

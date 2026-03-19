@@ -17,6 +17,8 @@ export interface QuestionItem {
   type: "mcq" | "short_answer" | "structured";
   hasDiagram: boolean;
   diagram?: TikzSpec;
+  diagramType?: string;
+  diagramData?: any;
   diagramMissing?: boolean;
   code?: string;
   syllabusObjective?: string;
