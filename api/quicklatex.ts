@@ -31,29 +31,24 @@ export default async function handler(req: Request): Promise<Response> {
 
   if (!formula) return new Response('Missing formula', { status: 400 })
 
-  const isFullDoc = formula.trim().startsWith('\\documentclass')
+  // QuickLaTeX free API only supports mode=0 (snippet). Full \documentclass documents
+  // are stripped to their tikzpicture block by the client before reaching here.
+  const preamble = libraries
+    ? `\\usepackage{tikz}\n\\usetikzlibrary{${libraries}}`
+    : '\\usepackage{tikz}'
 
   // URLSearchParams encodes spaces as '+', but QuickLaTeX does not decode '+' as space.
   // Use encodeURIComponent (spaces → '%20') so QuickLaTeX receives correct whitespace.
-  const params: string[] = [
+  const body = [
     `formula=${encodeURIComponent(formula)}`,
     `fsize=17px`,
     `fcolor=000000`,
     `bcolor=ffffff`,
-    // mode=1 for full \documentclass documents, mode=0 for snippets
-    `mode=${isFullDoc ? '1' : '0'}`,
+    `mode=0`,
     `out=1`,
     `errors=1`,
-  ]
-
-  if (!isFullDoc) {
-    const preamble = libraries
-      ? `\\usepackage{tikz}\n\\usetikzlibrary{${libraries}}`
-      : '\\usepackage{tikz}'
-    params.push(`preamble=${encodeURIComponent(preamble)}`)
-  }
-
-  const body = params.join('&')
+    `preamble=${encodeURIComponent(preamble)}`,
+  ].join('&')
 
   const qlRes = await fetch('https://quicklatex.com/latex3.f', {
     method: 'POST',

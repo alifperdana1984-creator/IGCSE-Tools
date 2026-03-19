@@ -14,18 +14,25 @@ interface QuickLaTeXResult {
 const cache = new Map<string, QuickLaTeXResult>();
 
 /**
- * Extracts or wraps TikZ content so QuickLaTeX receives only a
- * \begin{tikzpicture}...\end{tikzpicture} block (no \documentclass wrapper).
+ * Extracts the \begin{tikzpicture}...\end{tikzpicture} block from any input.
+ * Full \documentclass documents are unwrapped — QuickLaTeX's free API only
+ * accepts snippet mode (mode=0) and rejects \documentclass with error -3.
+ * \usetikzlibrary calls in the preamble are preserved via extractLibraries().
  */
 function wrapTikz(code: string): string {
   const trimmed = code.trim();
 
-  // If it's a full document, return it as is to preserve preamble definitions
+  // Full document: extract only the tikzpicture block (discard \documentclass wrapper).
+  // QuickLaTeX free API does not support mode=1 and errors on \documentclass.
   if (trimmed.startsWith("\\documentclass")) {
-    return trimmed;
+    const blockMatch = trimmed.match(
+      /\\begin\{tikzpicture\}[\s\S]*?\\end\{tikzpicture\}/,
+    );
+    if (blockMatch) return blockMatch[0];
+    // Full doc but tikzpicture block missing — fall through to bare-command handler
   }
 
-  // Complete tikzpicture block (with or without \documentclass wrapper) — extract it.
+  // Complete tikzpicture block — extract it.
   const blockMatch = trimmed.match(
     /\\begin\{tikzpicture\}[\s\S]*?\\end\{tikzpicture\}/,
   );
@@ -37,7 +44,6 @@ function wrapTikz(code: string): string {
     let body = trimmed.slice(beginIdx);
     // Drop any trailing incomplete line (no semicolon = command was cut off mid-way)
     const lines = body.split("\n");
-    // Find last line that ends with ; or { or } (complete statement)
     let lastComplete = lines.length - 1;
     while (lastComplete > 0) {
       const l = lines[lastComplete].trim();
@@ -111,9 +117,8 @@ function extractLibraries(code: string): string {
 export async function renderTikz(code: string): Promise<QuickLaTeXResult> {
   const sanitized = sanitizeTikz(code);
   const formula = wrapTikz(sanitized);
-  const libraries = formula.startsWith("\\documentclass")
-    ? ""
-    : extractLibraries(sanitized);
+  // Always extract libraries from the original sanitized code (including preamble of full docs)
+  const libraries = extractLibraries(sanitized);
   const cacheKey = formula + "|" + libraries;
   const cached = cache.get(cacheKey);
   if (cached) return cached;
