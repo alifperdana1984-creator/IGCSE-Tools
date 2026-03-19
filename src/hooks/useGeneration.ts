@@ -2,7 +2,7 @@ import { useState, useCallback } from 'react'
 import type { Assessment, QuestionItem, AnalyzeFileResult, GenerationConfig, AIError, Resource } from '../lib/types'
 import type { AIProvider } from '../lib/providers'
 import type { NotifyFn } from './useNotifications'
-import { generateTest, getStudentFeedback as aiFeedback, analyzeFile as aiAnalyze } from '../lib/ai'
+import { generateTest, getStudentFeedback as aiFeedback, analyzeFile as aiAnalyze, auditTest as aiAudit } from '../lib/ai'
 import { uploadToGeminiFileApi } from '../lib/gemini'
 import { getSyllabusCache, getPastPaperCache } from '../lib/firebase'
 import { Timestamp } from 'firebase/firestore'
@@ -30,11 +30,26 @@ function formatPastPaperText(cache: {
     questionType?: string
     difficultyBand?: string
     topic?: string
+    tags?: string[]
     assessmentObjective?: string
-  }>
-}): string {
+  }>,
+  topicFilter?: string
+): string {
   if (cache.items && cache.items.length > 0) {
-    const lines = cache.items
+    // If a topic is provided, prioritize items that match the topic or tags
+    let items = cache.items
+    if (topicFilter) {
+      const normalizedTopic = topicFilter.toLowerCase().trim()
+      items = [...cache.items].sort((a, b) => {
+        const aMatch = (a.topic?.toLowerCase().includes(normalizedTopic) || a.tags?.some(t => t.toLowerCase().includes(normalizedTopic))) ? 1 : 0
+        const bMatch = (b.topic?.toLowerCase().includes(normalizedTopic) || b.tags?.some(t => t.toLowerCase().includes(normalizedTopic))) ? 1 : 0
+        return bMatch - aMatch // Higher match score first
+      })
+      // Optional: Take only top X relevant examples if list is huge
+      items = items.slice(0, 10) 
+    }
+
+    const lines = items
       .map((item, i) =>
         `--- Example ${i + 1} ---\n` +
         `Question: ${item.questionText}\n` +
@@ -53,12 +68,35 @@ function formatPastPaperText(cache: {
   return (cache.examples ?? '').trim()
 }
 
+function formatSyllabusText(topics: Record<string, string>, topicFilter?: string): string {
+  const entries = Object.entries(topics)
+  if (!topicFilter) {
+    return entries
+      .map(([t, objs]) => `### ${t}\n${objs}`)
+      .join('\n\n')
+  }
+
+  const normalized = topicFilter.toLowerCase().trim()
+  const scored = entries.map(([t, objs]) => {
+    let score = 0
+    if (t.toLowerCase().includes(normalized)) score += 10
+    if (objs.toLowerCase().includes(normalized)) score += 2
+    return { t, objs, score }
+  })
+
+  const matches = scored.filter(x => x.score > 0).sort((a, b) => b.score - a.score)
+  
+  if (matches.length === 0) return entries.map(([t, objs]) => `### ${t}\n${objs}`).join('\n\n')
+  return matches.slice(0, 10).map(x => `### ${x.t}\n${x.objs}`).join('\n\n')
+}
+
 async function buildReferences(
   knowledgeBaseResources: Resource[],
   getBase64: (r: Resource) => Promise<string>,
   provider: AIProvider,
   apiKey?: string,
-  updateGeminiUri?: (r: Resource, uri: string) => Promise<void>
+  updateGeminiUri?: (r: Resource, uri: string) => Promise<void>,
+  topic?: string
 ) {
   return Promise.all(
     knowledgeBaseResources.map(async r => {
@@ -83,9 +121,7 @@ async function buildReferences(
           try {
             const cache = await getSyllabusCache(r.id)
             if (cache && Object.keys(cache.topics).length > 0) {
-              const syllabusText = Object.entries(cache.topics)
-                .map(([topic, objectives]) => `### ${topic}\n${objectives}`)
-                .join('\n\n')
+              const syllabusText = formatSyllabusText(cache.topics, topic)
               return { data: '', mimeType: r.mimeType, resourceType: 'syllabus', name: r.name, syllabusText }
             }
           } catch { /* fall through to file upload */ }
@@ -95,7 +131,7 @@ async function buildReferences(
           try {
             const cache = await getPastPaperCache(r.id)
             if (cache) {
-              const pastPaperText = formatPastPaperText(cache)
+              const pastPaperText = formatPastPaperText(cache, topic)
               if (pastPaperText.length > 100) {
                 return { data: '', mimeType: r.mimeType, resourceType: 'past_paper', name: r.name, pastPaperText }
               }
@@ -126,9 +162,7 @@ async function buildReferences(
         try {
           const cache = await getSyllabusCache(r.id)
           if (cache && Object.keys(cache.topics).length > 0) {
-            const syllabusText = Object.entries(cache.topics)
-              .map(([topic, objectives]) => `### ${topic}\n${objectives}`)
-              .join('\n\n')
+            const syllabusText = formatSyllabusText(cache.topics, topic)
             return { data: '', mimeType: r.mimeType, resourceType: 'syllabus', name: r.name, syllabusText }
           }
         } catch { /* fall through */ }
@@ -137,7 +171,7 @@ async function buildReferences(
         try {
           const cache = await getPastPaperCache(r.id)
           if (cache) {
-            const pastPaperText = formatPastPaperText(cache)
+            const pastPaperText = formatPastPaperText(cache, topic)
             if (pastPaperText.length > 100) {
               return { data: '', mimeType: r.mimeType, resourceType: 'past_paper', name: r.name, pastPaperText }
             }
@@ -159,6 +193,7 @@ export function useGeneration(
   const [generatedAssessment, setGeneratedAssessment] = useState<Assessment | null>(null)
   const [analysisText, setAnalysisText] = useState<string | null>(null)
   const [isGenerating, setIsGenerating] = useState(false)
+  const [isAuditing, setIsAuditing] = useState(false)
   const [retryCount, setRetryCount] = useState(0)
   const [error, setError] = useState<AIError | null>(null)
   const [lastRunCostIDR, setLastRunCostIDR] = useState<number | null>(null)
@@ -170,6 +205,7 @@ export function useGeneration(
     getBase64: (r: Resource) => Promise<string>
   ) => {
     setIsGenerating(true)
+    setIsAuditing(false)
     setRetryCount(0)
     setError(null)
     setLastRunCostIDR(null)
@@ -186,7 +222,7 @@ export function useGeneration(
         : 'Preparing generation request…'
       )
       const references = await buildReferences(
-        knowledgeBaseResources, getBase64, provider, apiKey, updateGeminiUri
+        knowledgeBaseResources, getBase64, provider, apiKey, updateGeminiUri, config.topic
       )
       addLog(`Sending request to ${provider === 'gemini' ? 'Gemini' : provider === 'openai' ? 'OpenAI' : 'Anthropic'} AI (${config.count} questions, ${config.difficulty} difficulty)…`)
       const questions = await generateTest({
@@ -199,14 +235,36 @@ export function useGeneration(
         addLog(`Rate limit hit — retrying (${attempt}/3)…`)
         notify(`Rate limit hit, retrying (${attempt}/3)...`, 'info')
       }, addUsageCost, addLog)
-      addLog(`Processing ${questions.length} question${questions.length !== 1 ? 's' : ''}…`)
+
+      const draftQuestions = questions
+      addLog(`Generated ${draftQuestions.length} draft question${draftQuestions.length !== 1 ? 's' : ''}…`)
+
+      // Critique & Refine Loop (Eleştir ve İyileştir)
+      setIsAuditing(true)
+      addLog('Auditing and refining questions (AI Critique)...')
+      
+      let finalQuestions = draftQuestions
+      try {
+        const tempAssessment: Assessment = {
+          id: 'temp', subject: config.subject, topic: config.topic,
+          difficulty: config.difficulty, questions: draftQuestions,
+          userId: 'temp', createdAt: Timestamp.now(),
+        }
+        const audited = await aiAudit(config.subject, tempAssessment, config.model, provider, apiKey)
+        if (audited && audited.length > 0) finalQuestions = audited
+        addLog('Audit complete. Questions refined.')
+      } catch (err) {
+        console.warn('Audit failed, using draft questions', err)
+        addLog('Audit skipped (optimization unavailable).')
+      }
+
       addLog('Finalising assessment…')
       const draft: Assessment = {
         id: crypto.randomUUID(),
         subject: config.subject,
         topic: config.topic,
         difficulty: config.difficulty,
-        questions,
+        questions: finalQuestions,
         userId: auth.currentUser?.uid ?? '',
         createdAt: Timestamp.now(),
       }
@@ -219,6 +277,7 @@ export function useGeneration(
       notify(ae.message ?? 'Failed to generate assessment', 'error')
     } finally {
       setIsGenerating(false)
+      setIsAuditing(false)
     }
   }, [notify, provider, apiKey])
 
@@ -233,7 +292,7 @@ export function useGeneration(
     setError(null)
     try {
       const references = await buildReferences(
-        knowledgeBaseResources, getBase64, provider, apiKey, updateGeminiUri
+        knowledgeBaseResources, getBase64, provider, apiKey, updateGeminiUri, subject // Analyze mode implies subject as topic context
       )
       const result: AnalyzeFileResult = await aiAnalyze(
         file.base64,
@@ -292,6 +351,7 @@ export function useGeneration(
     setGeneratedAssessment,
     analysisText,
     isGenerating,
+    isAuditing,
     retryCount,
     error,
     setError,

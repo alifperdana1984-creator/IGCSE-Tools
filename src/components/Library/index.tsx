@@ -5,7 +5,6 @@ import remarkGfm from 'remark-gfm'
 import rehypeKatex from 'rehype-katex'
 import { Folder as FolderIcon, Trash2, Plus, Library as LibraryIcon, Pencil, X, Check, Eye, FilePlus, FolderPlus, Loader2, Calendar, Globe } from 'lucide-react'
 import type { Assessment, Question, Folder } from '../../lib/types'
-import { parseSVGSafe, normalizeSvgMarkdown } from '../../lib/svg'
 import { preprocessLatex } from '../../lib/latex'
 import { RichEditor } from '../RichEditor'
 
@@ -34,34 +33,14 @@ interface Props {
   onTogglePublicQuestion: (id: string, isPublic: boolean) => void
 }
 
-const svgComponents = {
-  code({ className, children }: any) {
-    if (className === 'language-svg') {
-      const safe = parseSVGSafe(String(children))
-      if (safe) return (
-        <div className="my-3 border-t-2 border-b-2 border-violet-100 py-3 bg-violet-50/30 rounded-sm">
-          <p className="text-xs font-semibold text-violet-400 mb-2 flex items-center gap-1.5 px-1">
-            <span className="w-1.5 h-1.5 rounded-full bg-violet-300 inline-block" />
-            Diagram
-          </p>
-          <div dangerouslySetInnerHTML={{ __html: safe }} style={{ fontSize: '0.85em' }} />
-        </div>
-      )
-      return <span className="text-stone-400 text-xs italic">[Diagram unavailable]</span>
-    }
-    return <code className={className}>{children}</code>
-  }
-}
-
 
 function QMarkdown({ content }: { content: string }) {
   return (
     <ReactMarkdown
       remarkPlugins={[remarkMath, remarkGfm]}
       rehypePlugins={[rehypeKatex]}
-      components={svgComponents}
     >
-      {preprocessLatex(normalizeSvgMarkdown(content))}
+      {preprocessLatex(content)}
     </ReactMarkdown>
   )
 }
@@ -557,7 +536,6 @@ export function Library({
                       <div className="text-xs text-stone-700 truncate">
                         {q.text
                         .replace(/```svg[\s\S]*?```/g, '[diagram]')
-                        .replace(/<svg[\s\S]*?<\/svg>/gi, '[diagram]')
                         .replace(/\*\*/g, '')
                         .substring(0, 120)}...
                       </div>

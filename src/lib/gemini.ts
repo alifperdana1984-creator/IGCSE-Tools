@@ -364,6 +364,65 @@ function buildReferenceParts(references: Reference[], difficulty?: string): any[
   return parts
 }
 
+/** Fixes formatting, LaTeX, and wording issues in an existing question without changing its content.
+ *  Used by the UI "Repair" button. */
+export async function repairQuestionText(
+  question: QuestionItem,
+  subject: string,
+  model: string = 'gemini-2.0-flash',
+  apiKey?: string,
+): Promise<Partial<QuestionItem> | null> {
+  const ai = getAI(apiKey)
+
+  const prompt = `You are proofreading a Cambridge IGCSE ${subject} exam question. Fix ONLY formatting and LaTeX issues — do NOT change the meaning, difficulty, or content.
+
+COMMON ISSUES TO FIX:
+- Broken LaTeX: e.g. "$\\text{ cm}$$" → "$\\text{cm}$", "$$5.8 \\text{ cm}$$" → "$5.8\\text{ cm}$"
+- Double dollar signs where single should be used inline
+- Missing or extra spaces inside math mode
+- Inconsistent notation (e.g. mix of $x$ and x)
+- MCQ option lines that start with "A)" but contain raw LaTeX artifacts
+- Mark scheme lines with broken math formatting
+
+QUESTION TEXT:
+${question.text}
+
+ANSWER:
+${question.answer}
+
+MARK SCHEME:
+${question.markScheme}
+
+Return JSON with exactly these fields (fix all three, return original if nothing to fix):
+{
+  "text": "...",
+  "answer": "...",
+  "markScheme": "..."
+}`
+
+  try {
+    const response = await ai.models.generateContent({
+      model,
+      contents: [{ role: 'user', parts: [{ text: prompt }] }],
+      config: {
+        responseMimeType: 'application/json',
+        temperature: 0.1,
+        maxOutputTokens: 2048,
+      },
+    })
+    const raw = response.text?.trim()
+    if (!raw) return null
+    const parsed = JSON.parse(raw) as { text?: string; answer?: string; markScheme?: string }
+    const updates: Partial<QuestionItem> = {}
+    if (parsed.text && parsed.text !== question.text) updates.text = parsed.text
+    if (parsed.answer && parsed.answer !== question.answer) updates.answer = parsed.answer
+    if (parsed.markScheme && parsed.markScheme !== question.markScheme) updates.markScheme = parsed.markScheme
+    return Object.keys(updates).length > 0 ? updates : null
+  } catch {
+    return null
+  }
+}
+
 /** Used by the UI "Regenerate Diagram" button — regenerates diagrams for already-written questions.
  *  This is the repair path, not the main generation path. */
 export async function regenerateDiagramsForQuestions(
@@ -824,8 +883,7 @@ AUDIT CRITERIA (fix ALL violations):
 4. **Scientific/Mathematical Accuracy**: Check all facts, equations, calculations, chemical formulae, state symbols, SI units. Fix any errors.
 5. **Structured Question Format**: Multi-part questions (4+ marks) must have **(a)**, **(b)**, **(c)** sub-parts with individual mark allocations **[n]**. Fix any that don't.
 6. **LaTeX**: All mathematical/chemical expressions must be in LaTeX delimiters. Fix plain-text math.
-7. **SVG Attributes**: All SVG attributes must be camelCase. Fix kebab-case or snake_case.
-8. **syllabusObjective**: Must follow "REF – statement" format. Fix if missing or malformed.
+7. **syllabusObjective**: Must follow "REF – statement" format. Fix if missing or malformed.
 
 Return the ENTIRE assessment with ALL questions (corrected or unchanged).`
 
@@ -971,7 +1029,7 @@ export async function analyzeFile(
   const prompt = `Analyze this ${isPdf ? "past paper PDF" : "screenshot"} of a Cambridge IGCSE ${subject} question.
 1. Explain the topic and learning objectives it covers.
 2. Generate EXACTLY ${count} similar questions with the same concept but different context.
-3. For Science subjects, include SVG diagrams if appropriate. Use \`\`\`svg ... \`\`\` code blocks and **camelCase** attributes.
+3. For Science subjects, indicate if a diagram is needed by setting hasDiagram=true. Do not generate SVG.
 4. Each question must have: text, answer, markScheme, marks, commandWord, type (mcq/short_answer/structured), hasDiagram.
 5. **FORMATTING**: Use clean markdown with clear spacing for options. Do NOT append a separate Syllabus Reference line.`
 
@@ -1021,7 +1079,7 @@ export async function analyzeFile(
         },
         systemInstruction: `You are an expert Cambridge IGCSE ${subject} assessment designer.
 Analyze past paper questions with high precision and generate similar questions.
-Use SVG for any diagrams using **camelCase** attributes.`,
+Do NOT use SVG. Use hasDiagram=true for questions requiring diagrams.`,
       },
     })
     return safeJsonParse(response.text || '{}')

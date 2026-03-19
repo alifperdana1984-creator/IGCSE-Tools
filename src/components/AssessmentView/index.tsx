@@ -3,9 +3,8 @@ import ReactMarkdown from 'react-markdown'
 import remarkMath from 'remark-math'
 import remarkGfm from 'remark-gfm'
 import rehypeKatex from 'rehype-katex'
-import { Download, Copy, Save, Edit3, BookmarkPlus, X, Plus, Check, Pencil, ChevronUp, ChevronDown, Calendar, Loader2, RefreshCw, Eye, Code2 } from 'lucide-react'
+import { Download, Copy, Save, Edit3, BookmarkPlus, X, Plus, Check, Pencil, ChevronUp, ChevronDown, Calendar, Loader2, RefreshCw, Eye, Code2, Wrench } from 'lucide-react'
 import type { Assessment, Question, QuestionItem } from '../../lib/types'
-import { parseSVGSafe, normalizeSvgMarkdown } from '../../lib/svg'
 import { DiagramRenderer } from '../DiagramRenderer'
 import { exportToPDF } from '../../lib/pdf'
 import { preprocessLatex } from '../../lib/latex'
@@ -33,6 +32,7 @@ interface Props {
   onAddQuestions?: (questions: QuestionItem[]) => void
   onUpdateQuestion?: (questionId: string, updates: Partial<QuestionItem>) => void
   onRegenerateDiagrams?: (questions: QuestionItem[]) => Promise<void>
+  onRepairQuestion?: (question: QuestionItem) => Promise<Partial<QuestionItem> | null>
 }
 
 function QuestionMarkdown({ content }: { content: string }) {
@@ -40,27 +40,8 @@ function QuestionMarkdown({ content }: { content: string }) {
     <ReactMarkdown
       remarkPlugins={[remarkMath, remarkGfm]}
       rehypePlugins={[rehypeKatex]}
-      components={{
-        code({ className, children }) {
-          if (className === 'language-svg') {
-            const svgStr = String(children)
-            const safe = parseSVGSafe(svgStr)
-            if (safe) return (
-              <div className="my-3 border-t-2 border-b-2 border-violet-100 py-3 bg-violet-50/30 rounded-sm">
-                <p className="text-xs font-semibold text-violet-400 mb-2 flex items-center gap-1.5 px-1">
-                  <span className="w-1.5 h-1.5 rounded-full bg-violet-300 inline-block" />
-                  Diagram
-                </p>
-                <div dangerouslySetInnerHTML={{ __html: safe }} style={{ fontSize: '0.85em', maxWidth: '480px' }} />
-              </div>
-            )
-            return <span className="text-stone-400 text-xs italic">[Diagram unavailable]</span>
-          }
-          return <code className={className}>{children}</code>
-        }
-      }}
     >
-      {preprocessLatex(normalizeSvgMarkdown(content))}
+      {preprocessLatex(content)}
     </ReactMarkdown>
   )
 }
@@ -110,7 +91,9 @@ function BankPickerModal({
                 </div>
                 <div className="flex-1 min-w-0">
                   <p className="text-xs text-stone-700 truncate">
-                    {q.text.replace(/```svg[\s\S]*?```/g, '[diagram]').replace(/<svg[\s\S]*?<\/svg>/gi, '[diagram]').replace(/\*\*/g, '').substring(0, 100)}...
+                    {q.text
+                      .replace(/```tikz[\s\S]*?```/gi, '[diagram]')
+                      .replace(/\*\*/g, '').substring(0, 100)}...
                   </p>
                   <p className="text-xs text-stone-400 mt-0.5">{q.subject} · {q.marks}m · {q.commandWord}</p>
                 </div>
@@ -259,7 +242,7 @@ export function AssessmentView({
   isGenerating, generationLog,
   onEdit, onCancelEdit, onSave, onSaveToLibrary, onStudentFeedback, onCopy,
   activeTab, onTabChange,
-  onRemoveQuestion, onMoveQuestion, bankQuestions, onAddQuestions, onUpdateQuestion, onRegenerateDiagrams,
+  onRemoveQuestion, onMoveQuestion, bankQuestions, onAddQuestions, onUpdateQuestion, onRegenerateDiagrams, onRepairQuestion,
 }: Props) {
   const QUESTIONS_PER_PAGE = 8
   const contentRef = useRef<HTMLDivElement>(null)
@@ -273,6 +256,7 @@ export function AssessmentView({
   const [isDownloading, setIsDownloading] = useState(false)
   const [isFeedbackLoading, setIsFeedbackLoading] = useState(false)
   const [repairingIds, setRepairingIds] = useState<Set<string>>(new Set())
+  const [repairingTextIds, setRepairingTextIds] = useState<Set<string>>(new Set())
   const [questionPage, setQuestionPage] = useState(1)
 
   const renderedQuestions = assessment ? assessment.questions.map(repairQuestionItem) : []
@@ -775,4 +759,3 @@ export function AssessmentView({
     </div>
   )
 }
-
