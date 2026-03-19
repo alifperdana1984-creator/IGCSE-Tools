@@ -45,7 +45,7 @@ export function DiagramRenderer({ spec }: { spec: TikzSpec | undefined | null })
             width={state.width}
             height={state.height}
             style={{
-              maxWidth: spec.maxWidth ? `${spec.maxWidth}px` : '100%',
+              maxWidth: spec.maxWidth ? `${spec.maxWidth}px` : '320px',
               minHeight: spec.minHeight ? `${spec.minHeight}px` : undefined,
               display: 'block',
               margin: '0 auto',

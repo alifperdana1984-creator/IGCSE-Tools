@@ -630,33 +630,25 @@ export function AssessmentView({
                         </button>
                       )}
                     </div>
-                    {q.diagramMissing && onUpdateQuestion && !studentMode && (
-                      <div className="mb-2 flex items-start gap-2 px-3 py-2 bg-amber-50 border border-amber-200 rounded-lg text-xs text-amber-800">
-                        <span className="shrink-0 mt-0.5">!</span>
-                        <div className="flex-1 min-w-0">
-                          <span>Diagram was not generated for this question - it may be unanswerable.</span>
-                          <button
-                            onClick={() => { void handleRegenerateDiagram(q) }}
-                            disabled={repairingIds.has(q.id)}
-                            className="ml-2 inline-flex items-center gap-1 px-2 py-0.5 rounded bg-amber-200 text-amber-900 hover:bg-amber-300 disabled:opacity-60"
-                            title="Generate diagram for this question"
-                          >
-                            <RefreshCw className={`w-3 h-3 ${repairingIds.has(q.id) ? 'animate-spin' : ''}`} />
-                            Generate Diagram
-                          </button>
-                        </div>
-                      </div>
-                    )}
-                    {q.hasDiagram && !q.diagramMissing && onUpdateQuestion && !studentMode && (
-                      <div className="mb-2 flex justify-end">
+                    {q.hasDiagram && onUpdateQuestion && !studentMode && (
+                      <div className="mb-2 flex items-center justify-end gap-2">
+                        {q.diagramMissing && (
+                          <span className="text-xs text-amber-700 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded">
+                            Diagram could not be generated automatically
+                          </span>
+                        )}
                         <button
                           onClick={() => { void handleRegenerateDiagram(q) }}
                           disabled={repairingIds.has(q.id)}
-                          className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs bg-violet-100 text-violet-700 hover:bg-violet-200 disabled:opacity-60"
-                          title="Improve this diagram — each click adds more detail"
+                          className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs disabled:opacity-60 ${
+                            q.diagramMissing
+                              ? 'bg-amber-100 text-amber-800 hover:bg-amber-200'
+                              : 'bg-violet-100 text-violet-700 hover:bg-violet-200'
+                          }`}
+                          title={q.diagramMissing ? 'Generate a diagram for this question' : 'Improve this diagram — each click adds more detail'}
                         >
                           <RefreshCw className={`w-3 h-3 ${repairingIds.has(q.id) ? 'animate-spin' : ''}`} />
-                          Improve Diagram
+                          {q.diagramMissing ? 'Generate Diagram' : 'Improve Diagram'}
                         </button>
                       </div>
                     )}
