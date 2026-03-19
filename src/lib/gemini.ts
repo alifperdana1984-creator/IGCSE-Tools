@@ -1305,6 +1305,11 @@ STRICT REQUIREMENTS — follow exactly:
       ?.replace(/^```(latex|tex)?/i, "")
       .replace(/```$/, "")
       .trim();
+
+    // Try to extract fenced code block first to handle preamble text like "Here is the code:"
+    const fencedMatch = text?.match(/```(?:latex|tex)?\s*([\s\S]*?)```/i);
+    const clean = fencedMatch ? fencedMatch[1].trim() : text?.replace(/^```(latex|tex)?/i, "").replace(/```$/, "").trim();
+
     return clean || null;
   } catch (err) {
     onLog?.(`TikZ generation error: ${err}`);
