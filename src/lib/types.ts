@@ -1,4 +1,7 @@
 import { Timestamp } from "firebase/firestore";
+import type { DiagramDSL } from "./mathEngine";
+
+export type { DiagramDSL };
 
 export interface TikzSpec {
   diagramType: 'tikz'
@@ -17,9 +20,14 @@ export interface QuestionItem {
   type: "mcq" | "short_answer" | "structured";
   hasDiagram: boolean;
   diagram?: TikzSpec;
+  /** Structured diagram DSL — single source of truth for all geometry */
+  diagramDSL?: DiagramDSL;
+  /** @deprecated Use diagramDSL instead */
   diagramType?: string;
+  /** @deprecated Use diagramDSL instead */
   diagramData?: any;
   diagramMissing?: boolean;
+  isValid?: boolean;
   code?: string;
   syllabusObjective?: string;
   assessmentObjective?: "AO1" | "AO2" | "AO3";

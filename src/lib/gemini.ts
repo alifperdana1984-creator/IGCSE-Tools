@@ -14,7 +14,9 @@ import {
   generateQuestionCode as sharedGenerateQuestionCode,
 } from "./sanitize";
 import { parseJsonWithRecovery } from "./json";
-import { renderDiagram } from "../components/RichEditor/diagramEngine";
+import { renderDiagramFromDSL } from "../components/RichEditor/diagramEngine";
+import { validateDSL, solveDSL, coerceToDSL } from "./mathEngine";
+import type { DiagramDSL } from "./mathEngine";
 
 function getAI(apiKey?: string) {
   if (!apiKey) {
@@ -765,8 +767,8 @@ interface QuestionSlot {
   questionType: "mcq" | "short_answer" | "structured";
   /** Whether this question needs a diagram */
   hasDiagram: boolean;
-  diagramType?: string;
-  diagramData?: any;
+  /** Structured DSL — single source of truth for geometry; replaces diagramData */
+  diagramDSL?: DiagramDSL;
 }
 
 export async function generateTest(
@@ -820,30 +822,39 @@ RULE:
 If diagramMustBeUsed = true:
 → The diagram MUST contain hidden information not repeated in text
 
-DIAGRAM DATA (If hasDiagram=true):
-You must provide structured JSON in 'diagramData' for the deterministic renderer.
-NEVER write vague descriptions. Use EXACT coordinates.
+DIAGRAM DSL (If hasDiagram=true) — MANDATORY FORMAT:
+You MUST output a "diagramDSL" object. This is the SINGLE SOURCE OF TRUTH.
+The math engine will compute all answers from it. DO NOT invent values in question text.
 
-Supported types: "triangle", "circle", "parallel_lines"
+Supported diagram types:
 
-Constraint Examples:
-- Triangle: { A: [0,4], B: [0,0], C: [3,0], rightAngleAt: "B" }
-- Circle: { center: [0,0], radius: 3, A: [-3,0], B: [3,0], C: [0,3] } (AB is diameter)
-- Parallel Lines: { line1: [[0,0],[4,0]], line2: [[0,2],[4,2]], transversal: [[1,-1],[3,3]] }
+TYPE "triangle" — required fields: type, points (A/B/C), constraints, givens, unknowns
+  Example: { "type":"triangle", "points":{"A":[0,4],"B":[0,0],"C":[3,0]}, "rightAngleAt":"B",
+             "constraints":["right_angle_at_B"], "givens":["AB=4","BC=3"], "unknowns":["AC","angle_A"] }
+  RULE: If rightAngleAt="B", vectors BA and BC must have dot product = 0.
+        BA=(0,4), BC=(3,0) → dot=0 ✓  A=[0,4] B=[0,0] C=[3,0] ✓
+
+TYPE "circle" — required fields: type, center, radius, points (A/B/C on circumference)
+  Example: { "type":"circle", "center":[0,0], "radius":5,
+             "points":{"A":[-5,0],"B":[5,0],"C":[0,5]},
+             "constraints":["AB_is_diameter"], "givens":["radius=5"], "unknowns":["angle_ACB"] }
+  RULE: Every point must satisfy distance(point, center) = radius exactly.
+
+TYPE "parallel_lines" — required fields: type, line1, line2, transversal, angleType
+  Example: { "type":"parallel_lines", "line1":[[0,0],[4,0]], "line2":[[0,2],[4,2]],
+             "transversal":[[1,-0.5],[3,2.5]], "angleType":"alternate",
+             "constraints":["parallel_lines"], "givens":["angle_at_A=65"], "unknowns":["angle_at_B"] }
+  RULE: line1 and line2 MUST have the same direction vector (truly parallel).
+
+ABSOLUTE RULES:
+1. Coordinates must be numbers. Constraints must be geometrically satisfied by the coordinates.
+2. DO NOT set rightAngleAt unless the dot product of the two edge vectors is exactly 0.
+3. hasDiagram=true REQUIRES a valid diagramDSL. If coordinates cannot satisfy constraints, set hasDiagram=false.
+4. The diagramDSL "unknowns" are what the student computes — those values must NOT appear in the question text.
 
 SUB-TOPIC DIVERSITY (strictly enforce):
 - Each slot MUST test a DIFFERENT sub-topic or skill within ${config.topic}.
 - Spread across the widest possible range.
-
-STRICT ADDITION:
-
-Each slot MUST include:
-- reasoningType
-- difficultyIntent = "A*"
-- diagramMustBeUsed = true (if hasDiagram)
-
-If diagramMustBeUsed:
-→ Diagram must contain hidden information NOT repeated in text
 Return EXACTLY ${config.count} slots.`;
 
   const phase1Schema = {
@@ -858,35 +869,47 @@ Return EXACTLY ${config.count} slots.`;
             topic: { type: Type.STRING },
             questionType: { type: Type.STRING },
             hasDiagram: { type: Type.BOOLEAN },
-            reasoningType: { type: Type.STRING, nullable: true },
-            difficultyIntent: { type: Type.STRING, nullable: true },
-            diagramMustBeUsed: { type: Type.BOOLEAN, nullable: true },
-            diagramType: { type: Type.STRING, nullable: true },
-            diagramData: {
+            diagramDSL: {
               type: Type.OBJECT,
               nullable: true,
               properties: {
-                // Triangle / Common
-                A: { type: Type.ARRAY, items: { type: Type.NUMBER } },
-                B: { type: Type.ARRAY, items: { type: Type.NUMBER } },
-                C: { type: Type.ARRAY, items: { type: Type.NUMBER } },
+                type: { type: Type.STRING },
+                // Triangle points
+                points: {
+                  type: Type.OBJECT,
+                  nullable: true,
+                  properties: {
+                    A: { type: Type.ARRAY, items: { type: Type.NUMBER }, nullable: true },
+                    B: { type: Type.ARRAY, items: { type: Type.NUMBER }, nullable: true },
+                    C: { type: Type.ARRAY, items: { type: Type.NUMBER }, nullable: true },
+                    D: { type: Type.ARRAY, items: { type: Type.NUMBER }, nullable: true },
+                  },
+                },
                 rightAngleAt: { type: Type.STRING, nullable: true },
                 // Circle
-                center: { type: Type.ARRAY, items: { type: Type.NUMBER } },
+                center: { type: Type.ARRAY, items: { type: Type.NUMBER }, nullable: true },
                 radius: { type: Type.NUMBER, nullable: true },
                 // Parallel Lines
                 line1: {
                   type: Type.ARRAY,
                   items: { type: Type.ARRAY, items: { type: Type.NUMBER } },
+                  nullable: true,
                 },
                 line2: {
                   type: Type.ARRAY,
                   items: { type: Type.ARRAY, items: { type: Type.NUMBER } },
+                  nullable: true,
                 },
                 transversal: {
                   type: Type.ARRAY,
                   items: { type: Type.ARRAY, items: { type: Type.NUMBER } },
+                  nullable: true,
                 },
+                angleType: { type: Type.STRING, nullable: true },
+                constraints: { type: Type.ARRAY, items: { type: Type.STRING }, nullable: true },
+                givens: { type: Type.ARRAY, items: { type: Type.STRING }, nullable: true },
+                unknowns: { type: Type.ARRAY, items: { type: Type.STRING }, nullable: true },
+                labels: { type: Type.OBJECT, nullable: true },
               },
             },
           },
@@ -950,20 +973,35 @@ Return EXACTLY ${config.count} slots.`;
     onRetry,
   );
 
-  // Normalise slots
+  // Normalise slots — coerce raw diagramData → validated DiagramDSL
   const validTypes = ["mcq", "short_answer", "structured"];
-  const slots: QuestionSlot[] = rawSlots.slice(0, config.count).map((s, i) => ({
-    index: i,
-    topic: s.topic ?? config.topic,
-    questionType: (validTypes.includes(s.questionType)
-      ? s.questionType
-      : cleanType === "mixed"
-        ? "short_answer"
-        : cleanType) as QuestionSlot["questionType"],
-    hasDiagram: Boolean(s.hasDiagram),
-    diagramType: s.diagramType,
-    diagramData: s.diagramData,
-  }));
+  const slots: QuestionSlot[] = rawSlots.slice(0, config.count).map((s: any, i: number) => {
+    // Build DSL: prefer explicit diagramDSL, otherwise coerce legacy diagramData
+    let diagramDSL: DiagramDSL | undefined;
+    if (s.diagramDSL && s.diagramDSL.type) {
+      const v = validateDSL(s.diagramDSL);
+      if (v.valid) diagramDSL = s.diagramDSL as DiagramDSL;
+      else onLog?.(`[Phase 1] Slot ${i} diagramDSL invalid: ${v.errors.join("; ")}`);
+    } else if (s.diagramData && s.diagramType) {
+      const coerced = coerceToDSL(s.diagramType, s.diagramData);
+      if (coerced) {
+        const v = validateDSL(coerced);
+        if (v.valid) diagramDSL = coerced;
+        else onLog?.(`[Phase 1] Slot ${i} coerced DSL invalid: ${v.errors.join("; ")}`);
+      }
+    }
+    return {
+      index: i,
+      topic: s.topic ?? config.topic,
+      questionType: (validTypes.includes(s.questionType)
+        ? s.questionType
+        : cleanType === "mixed"
+          ? "short_answer"
+          : cleanType) as QuestionSlot["questionType"],
+      hasDiagram: Boolean(s.hasDiagram) && !!diagramDSL,
+      diagramDSL,
+    };
+  });
 
   // ── Phase 2: Write questions ─────────────────────────────────────────────
 
@@ -972,9 +1010,13 @@ Return EXACTLY ${config.count} slots.`;
   // Build per-slot diagram context to inject into the Phase 2 prompt
   const slotDescriptions = slots
     .map((s) => {
-      let desc = `Q${s.index + 1}: topic="${s.topic}", type="${s.questionType}"${s.hasDiagram ? " (needs diagram)" : ""}`;
-      if (s.hasDiagram && s.diagramData) {
-        desc += `\n   MANDATORY DIAGRAM DATA: ${JSON.stringify(s.diagramData)}\n   (Write the question using THESE EXACT VALUES. Do not change them.)`;
+      let desc = `Q${s.index + 1}: topic="${s.topic}", type="${s.questionType}"${s.hasDiagram ? " (has diagram)" : ""}`;
+      if (s.hasDiagram && s.diagramDSL) {
+        // Compute all values deterministically — hand these to AI for question wording
+        const sol = solveDSL(s.diagramDSL);
+        desc += `\n   DIAGRAM DSL (single source of truth): ${JSON.stringify(s.diagramDSL)}`;
+        desc += `\n   COMPUTED VALUES (use these in question — do NOT invent other numbers): ${JSON.stringify(sol)}`;
+        desc += `\n   RULE: unknowns (${(s.diagramDSL.unknowns ?? []).join(", ")}) must NOT appear in question text — student reads them from diagram.`;
       }
       return desc;
     })
@@ -1169,17 +1211,15 @@ ASSESSMENT OBJECTIVES:
     onRetry,
   );
 
-  // Stitch: sanitize questions
-  let questions: QuestionItem[] = (rawQuestions.questions ?? []).map((q, i) => {
+  // Stitch: sanitize questions and attach DSL from Phase 1
+  let questions: QuestionItem[] = (rawQuestions.questions ?? []).map((q: any, i: number) => {
     const sanitized = sanitizeQuestion(q);
     const slot = slots[i];
-    const hasDiagram =
-      slot?.hasDiagram || sanitized.hasDiagram || !!slot?.diagramData;
+    const hasDiagram = slot?.hasDiagram || sanitized.hasDiagram;
     return {
       ...sanitized,
       hasDiagram,
-      diagramType: slot?.diagramType ?? sanitized.diagramType,
-      diagramData: slot?.diagramData ?? sanitized.diagramData,
+      ...(slot?.diagramDSL ? { diagramDSL: slot.diagramDSL } : {}),
       id: crypto.randomUUID(),
       code: sharedGenerateQuestionCode(config.subject, {
         text: sanitized.text,
@@ -1194,21 +1234,15 @@ ASSESSMENT OBJECTIVES:
     onLog?.(`Phase 3: rendering ${diagramQuestions.length} diagrams…`);
     await Promise.all(
       questions.map(async (q) => {
-        if (q.hasDiagram) {
-          // 1. Try Deterministic Render
-          const deterministicTikz = renderDiagram(q);
-          if (deterministicTikz) {
-            q.diagram = { diagramType: "tikz", code: deterministicTikz };
+        if (q.hasDiagram && q.diagramDSL) {
+          // Deterministic render only — no AI fallback (core principle)
+          const tikzCode = renderDiagramFromDSL(q.diagramDSL);
+          if (tikzCode) {
+            q.diagram = { diagramType: "tikz", code: tikzCode };
           } else {
-            // 2. Fallback to AI-generated TikZ
-            const tikzCode = await generateTikzCode(
-              q,
-              config.subject,
-              model,
-              ai,
-              onLog,
-            );
-            if (tikzCode) q.diagram = { diagramType: "tikz", code: tikzCode };
+            // DSL render failed → mark diagram missing, log for debugging
+            q.diagramMissing = true;
+            onLog?.(`[Phase 3] Q${questions.indexOf(q) + 1}: DSL render failed — diagram marked missing`);
           }
         }
       }),
@@ -1386,26 +1420,22 @@ async function regenerateSingleQuestion(
     if (!parsed.text) return null;
 
     const sanitized = sanitizeQuestion(parsed);
-    const updated = {
+    const updated: QuestionItem = {
       ...sanitized,
       id: original.id,
       code: original.code,
-      diagram: undefined as typeof original.diagram,
-      diagramType: original.diagramType,
-      diagramData: original.diagramData,
+      diagram: undefined,
+      ...(original.diagramDSL ? { diagramDSL: original.diagramDSL } : {}),
       hasDiagram: original.hasDiagram,
     };
 
-    if (original.hasDiagram) {
-      // Try deterministic render first, fall back to AI TikZ generation
-      const deterministicTikz = renderDiagram(updated);
-      if (deterministicTikz) {
-        updated.diagram = { diagramType: "tikz", code: deterministicTikz };
+    if (original.hasDiagram && original.diagramDSL) {
+      // Deterministic render only — no AI fallback
+      const tikzCode = renderDiagramFromDSL(original.diagramDSL);
+      if (tikzCode) {
+        updated.diagram = { diagramType: "tikz", code: tikzCode };
       } else {
-        const aiTikz = await generateTikzCode(updated, config.subject, model, ai);
-        if (aiTikz) {
-          updated.diagram = { diagramType: "tikz", code: aiTikz };
-        }
+        updated.diagramMissing = true;
       }
     }
     return updated;
