@@ -1012,10 +1012,16 @@ The diagram type MUST match the skill being tested.`;
     if (intent.diagramType === "parallel_lines") {
       const ang = Math.max(25, Math.min(75, g));
       const s = (seed % 3) + 1; // 1, 2, or 3
+      // Rotate baseline lines so they're not always horizontal
+      const rotationAngle = seed * 15; // 0°, 15°, 30°, 45°…
+      const baseLine1: [[number, number], [number, number]] = [[0, 0], [10, 0]];
+      const baseLine2: [[number, number], [number, number]] = [[0, 5], [10, 5]];
+      const line1 = baseLine1.map((p) => rotate(p, rotationAngle)) as [[number, number], [number, number]];
+      const line2 = baseLine2.map((p) => rotate(p, rotationAngle)) as [[number, number], [number, number]];
       return {
         type: "parallel_lines",
-        line1: [[0, 0], [10, 0]],
-        line2: [[0, 5], [10, 5]],
+        line1,
+        line2,
         transversal: [[2 + s, -2], [8 - s, 8]],
         angleType: intent.angleType ?? "alternate",
         constraints: ["parallel_lines"],
@@ -1026,11 +1032,18 @@ The diagram type MUST match the skill being tested.`;
 
     if (intent.diagramType === "circle") {
       const r = Math.max(3, Math.min(6, Math.round(g / 10) + 3 + (seed % 2)));
+      // Vary center so it's not always at origin
+      const cx = seed % 2 === 0 ? seed : -seed;
+      const cy = seed % 3 === 0 ? seed : -(seed % 2);
       return {
         type: "circle",
-        center: [0, 0],
+        center: [cx, cy],
         radius: r,
-        points: { A: [-r, 0], B: [r, 0], C: [0, r] },
+        points: {
+          A: [cx - r, cy],
+          B: [cx + r, cy],
+          C: [cx, cy + r],
+        },
         constraints: ["AB_is_diameter"],
         givens: [`radius=${r}`],
         unknowns: ["angle_ACB"],
@@ -1053,9 +1066,10 @@ The diagram type MUST match the skill being tested.`;
     const a = Math.max(2, Math.min(8, Math.round(g / 10) + 2 + (seed % 3)));
     const b = Math.max(2, Math.min(8, a + 1 + (seed % 2))); // ensure a ≠ b
     if (intent.rightAngle) {
+      // Vary A position so it's not always at [0, a]
       return {
         type: "triangle",
-        points: { A: [0, a], B: [0, 0], C: [b, 0] },
+        points: { A: [seed, a], B: [seed, 0], C: [seed + b, 0] },
         rightAngleAt: "B",
         constraints: ["right_angle_at_B"],
         givens: [`AB=${a}`, `BC=${b}`],
@@ -1067,11 +1081,20 @@ The diagram type MUST match the skill being tested.`;
     const cy = Math.max(2, a - 1 + (seed % 2));
     return {
       type: "triangle",
-      points: { A: [0, 0], B: [b, 0], C: [cx, cy] },
+      points: { A: [seed, seed], B: [seed + b, seed], C: [seed + cx, seed + cy] },
       constraints: [],
       givens: [`AB=${b}`, `BC=${Math.round(Math.sqrt((b - cx) ** 2 + cy ** 2))}`],
       unknowns: ["angle_A", "angle_B"],
     };
+  }
+
+  /** Rotate a 2D point by `angle` degrees around the origin. */
+  function rotate([x, y]: [number, number], angle: number): [number, number] {
+    const rad = angle * Math.PI / 180;
+    return [
+      Math.round((x * Math.cos(rad) - y * Math.sin(rad)) * 100) / 100,
+      Math.round((x * Math.sin(rad) + y * Math.cos(rad)) * 100) / 100,
+    ];
   }
 
   // ── Slot normalisation — SEQUENTIAL (rate-limit safe) ───────────────────────
@@ -1208,6 +1231,21 @@ CONTEXT
 - ${DIFFICULTY_GUIDANCE[config.difficulty] ?? `Difficulty: ${config.difficulty}`}
 - Calculator: ${config.calculator ? "Allowed" : "Not Allowed"}
 ${config.syllabusContext ? `- Syllabus focus: ${config.syllabusContext}` : ""}
+
+════════════════════════════════════
+CRITICAL RULES — READ BEFORE WRITING
+
+⛔ You MUST use ONLY the values provided in the DSL above.
+- DO NOT introduce new numbers
+- DO NOT change given values
+- DO NOT invent angles, lengths, or coordinates
+
+All numerical values in the question text MUST come from GIVEN VALUES above.
+If you introduce ANY new number → the answer is INVALID.
+
+The diagram MUST be REQUIRED to solve the question.
+Do NOT reveal all values in text.
+At least one value must be obtained ONLY from the diagram.
 
 ════════════════════════════════════
 STRICT RULES
