@@ -713,24 +713,49 @@ export function detectRogueNumbers(
   const sol = solveDSL(dsl);
   const dslNumbers = new Set<string>();
 
-  // Collect all numeric strings from DSL values
+  // Helper: add all numeric strings from a value
   const addNumbers = (v: unknown) => {
-    if (typeof v === "number") dslNumbers.add(String(v));
-    else if (Array.isArray(v)) v.forEach(addNumbers);
-    else if (typeof v === "string" && !isNaN(Number(v))) dslNumbers.add(v);
+    if (typeof v === "number") {
+      dslNumbers.add(String(v));
+      // Also add rounded variants (e.g. 5.66 → also allow "5.7", "6")
+      dslNumbers.add(String(Math.round(v)));
+      dslNumbers.add(v.toFixed(1));
+    } else if (Array.isArray(v)) {
+      v.forEach(addNumbers);
+    } else if (typeof v === "string" && !isNaN(Number(v))) {
+      dslNumbers.add(v);
+    }
   };
+
+  // All solved values
   Object.values(sol.values).forEach(addNumbers);
 
-  // Also include raw givens from DSL
+  // Raw givens
   (dsl.givens ?? []).forEach((g) => {
     const m = g.match(/-?\d+(?:\.\d+)?/g);
     if (m) m.forEach((n) => dslNumbers.add(n));
   });
+
+  // DSL labels (e.g. { AB: "5", BC: "5.66" })
+  Object.values(dsl.labels ?? {}).forEach((v) => {
+    if (v && !isNaN(Number(v))) dslNumbers.add(v);
+  });
+
+  // Radius
   if (dsl.radius !== undefined) dslNumbers.add(String(dsl.radius));
 
-  // Extract numbers from question text (skip year-like 4-digit numbers)
+  // Point coordinates — AI may reference these in questions
+  Object.values(dsl.points ?? {}).forEach((pt) => {
+    if (Array.isArray(pt)) {
+      dslNumbers.add(String(pt[0]));
+      dslNumbers.add(String(pt[1]));
+    }
+  });
+
+  // Extract numbers from question text (skip year-like 4-digit numbers, skip 1 and 2
+  // which appear in LaTeX/formatting contexts constantly)
   const textNumbers = (questionText.match(/-?\d+(?:\.\d+)?/g) ?? []).filter(
-    (n) => !/^\d{4}$/.test(n),
+    (n) => !/^\d{4}$/.test(n) && n !== "1" && n !== "2",
   );
 
   const rogue: number[] = [];

@@ -1339,13 +1339,15 @@ ASSESSMENT OBJECTIVES:
     const intent = slot.intent;
 
     // Build human-readable given/unknown blocks
+    // NOTE: Do NOT include raw point coordinates or line vectors — the AI will
+    // extract numbers from them and write them into the question text as rogue values.
     const givenLines = (dsl.givens ?? []).map((g) => `  ${g}`);
-    const pts = dsl.points ?? {};
-    Object.entries(pts).forEach(([name, pt]) => givenLines.push(`  ${name} = (${pt[0]}, ${pt[1]})`));
     if (dsl.radius !== undefined) givenLines.push(`  radius = ${dsl.radius}`);
-    if (dsl.line1) givenLines.push(`  line1 = ${JSON.stringify(dsl.line1)}`);
-    if (dsl.line2) givenLines.push(`  line2 = ${JSON.stringify(dsl.line2)}`);
-    if (dsl.transversal) givenLines.push(`  transversal = ${JSON.stringify(dsl.transversal)}`);
+    // For parallel lines, only include the given angle (already in dsl.givens)
+    // For labels (side lengths), include those too
+    Object.entries(dsl.labels ?? {}).forEach(([k, v]) => {
+      if (v && v !== "?") givenLines.push(`  ${k} = ${v}`);
+    });
 
     const unknownLines = (dsl.unknowns ?? []).map((u) => {
       const v = sol.values[u];
@@ -1631,9 +1633,9 @@ RULES:
     }
 
     // ── ROGUE NUMBER HARD REJECTION ──────────────────────────────────────────
-    // If AI invented numbers not in the DSL, flag the question so the UI
-    // surfaces it as broken. Do NOT silently pass.
-    if (dsl) {
+    // MCQ questions are exempt: distractor options will naturally contain numbers
+    // not in the DSL — that's intentional. Only check free-response questions.
+    if (dsl && sanitized.type !== "mcq") {
       const rogues = detectRogueNumbers(sanitized.text, dsl);
       if (rogues.length > 0) {
         onLog?.(`[REJECT] Q${i + 1}: rogue numbers in text: ${rogues.join(", ")} — flagged`);

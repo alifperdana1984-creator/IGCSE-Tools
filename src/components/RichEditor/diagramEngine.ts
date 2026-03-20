@@ -651,10 +651,10 @@ function renderCoordGeomFromDSL(dsl: DiagramDSL): string | null {
  * - angles library enables arc drawing
  */
 function wrapTikz(content: string): string {
-  return `\\documentclass[tikz,border=8mm]{standalone}
+  return `\\documentclass[tikz,border=10pt]{standalone}
 \\usetikzlibrary{calc,arrows.meta}
 \\begin{document}
-\\begin{tikzpicture}[font=\\small, line cap=round, line join=round]
+\\begin{tikzpicture}[scale=1.8, font=\\normalsize, line cap=round, line join=round]
 ${content}
 \\end{tikzpicture}
 \\end{document}`;
