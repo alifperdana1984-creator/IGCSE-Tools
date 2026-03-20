@@ -1100,7 +1100,7 @@ RULES:
     onLog?.(`[Phase 2] Q${slot.index + 1}: writing question + TikZ (${slot.topic})`);
     const q = await writeQuestionWithTikz(slot);
     rawQuestionsMap[slot.index] = q;
-    if (di < dslSlots.length - 1) await new Promise((r) => setTimeout(r, 500));
+    if (di < dslSlots.length - 1) await new Promise((r) => setTimeout(r, 3000));
   }
 
   const nonDslResults = await writeQuestionsWithoutDSL(nonDslSlots);
