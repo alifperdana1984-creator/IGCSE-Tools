@@ -8,7 +8,7 @@ export const config = { runtime: 'edge' }
 const BASE_PREAMBLE = [
   '\\usepackage{tikz}',
   '\\usepackage{amsmath}',
-  '\\usetikzlibrary{arrows.meta,calc,patterns,positioning}',
+  '\\usetikzlibrary{arrows.meta,calc,patterns,positioning,angles,quotes}',
 ].join('\n')
 
 function extractTikzBlock(code: string): { formula: string; extraLibs: string } {
