@@ -46,7 +46,7 @@ export function DiagramRenderer({ spec }: { spec: TikzSpec | undefined | null })
             src={state.url}
             alt="diagram"
             style={{
-              maxWidth: spec.maxWidth ? `${spec.maxWidth}px` : '320px',
+              maxWidth: spec.maxWidth ? `${spec.maxWidth}px` : '640px',
               display: 'block',
               margin: '0 auto',
             }}
