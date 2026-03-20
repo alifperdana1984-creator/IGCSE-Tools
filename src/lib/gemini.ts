@@ -981,6 +981,9 @@ TIKZ REQUIREMENTS (each diagram):
 - Right angles: small square marker
 - Available libraries: calc, arrows.meta, angles, quotes, patterns, positioning
 - Diagram must match question exactly (same letters, values, geometry)
+- CRITICAL: every { must have a matching } — count your braces before outputting
+- CRITICAL: every \\begin{...} must have a matching \\end{...}
+- CRITICAL: every command must end with a semicolon
 
 MARK SCHEME: Cambridge notation (B1, M1, A1).`;
 
@@ -1224,9 +1227,11 @@ STRICT REQUIREMENTS — follow exactly:
 2. Add \\usetikzlibrary{...} on the line BEFORE \\begin{tikzpicture} if needed.
 3. Use \\coordinate for named points. calc interpolation $(A)!0.5!(B)$ is fully supported.
 4. Label all key points and values. Mark right angles with a small square.
-5. CRITICAL: every \\draw command MUST end with a semicolon on the same line.
-6. You MUST output the complete block ending with \\end{tikzpicture} — never truncate.
-7. If no diagram is needed, output nothing (empty string).`;
+5. CRITICAL: every command MUST end with a semicolon.
+6. CRITICAL: every { must have a matching } — unmatched braces cause a compile error.
+7. CRITICAL: every \\begin{...} must have a matching \\end{...}.
+8. You MUST output the complete block ending with \\end{tikzpicture} — never truncate.
+9. If no diagram is needed, output nothing (empty string).`;
 
   try {
     const response = await ai.models.generateContent({
