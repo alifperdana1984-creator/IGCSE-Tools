@@ -212,6 +212,13 @@ export function Library({
   const [questionPage, setQuestionPage] = useState(1)
   const [assessmentPage, setAssessmentPage] = useState(1)
 
+  // Keep previewQuestion in sync when the question is updated externally (e.g. after diagram regenerate)
+  useEffect(() => {
+    if (!previewQuestion) return
+    const updated = questions.find(q => q.id === previewQuestion.id)
+    if (updated && updated !== previewQuestion) setPreviewQuestion(updated)
+  }, [questions, previewQuestion])
+
   const subjectOptions = useMemo(() => {
     const set = new Set<string>()
     assessments.forEach(a => { if (a.subject) set.add(a.subject) })

@@ -34,9 +34,12 @@ export function DiagramRenderer({ spec }: { spec: TikzSpec | undefined | null })
           </div>
         )}
         {state.error && (
-          <div className="text-xs text-red-400 py-2 px-1 font-mono whitespace-pre-wrap">
-            TikZ error: {state.error}
-          </div>
+          <details className="text-xs text-red-400 py-2 px-1">
+            <summary className="cursor-pointer font-semibold">Render error — click to see details</summary>
+            <p className="font-mono whitespace-pre-wrap mt-1">{state.error}</p>
+            <p className="mt-2 font-semibold text-stone-500">TikZ source:</p>
+            <pre className="font-mono text-stone-400 whitespace-pre-wrap text-[10px] mt-1 max-h-40 overflow-y-auto">{spec.code}</pre>
+          </details>
         )}
         {state.url && (
           <img
