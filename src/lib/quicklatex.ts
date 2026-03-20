@@ -27,6 +27,9 @@ function extractBlock(code: string): string {
  * Fixes common AI TikZ generation mistakes.
  */
 function sanitizeTikz(code: string): string {
+  // Strip markdown code fences
+  const fenced = code.match(/```(?:latex|tex)?\s*([\s\S]*?)```/i)
+  if (fenced) code = fenced[1]
   return code
     .replace(/\\n/g, "\n")
     .replace(

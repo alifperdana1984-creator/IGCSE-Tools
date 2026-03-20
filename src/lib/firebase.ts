@@ -395,7 +395,7 @@ export const updateAssessment = async (
 ): Promise<void> => {
   const docRef = doc(db, 'assessments', id)
   try {
-    await updateDoc(docRef, updates as any)
+    await updateDoc(docRef, stripUndefined(updates as Record<string, unknown>) as any)
   } catch (error) {
     handleFirestoreError(error, OperationType.UPDATE, `assessments/${id}`)
   }
@@ -480,7 +480,7 @@ export const updateQuestion = async (
 ): Promise<void> => {
   const docRef = doc(db, 'questions', id)
   try {
-    await updateDoc(docRef, updates as any)
+    await updateDoc(docRef, stripUndefined(serializeQuestionDiagram(updates) as Record<string, unknown>) as any)
   } catch (error) {
     handleFirestoreError(error, OperationType.UPDATE, `questions/${id}`)
   }
