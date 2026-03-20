@@ -26,7 +26,12 @@ import type { Assessment, Question, Folder, Resource, ResourceType, SyllabusCach
 function stripUndefined(obj: Record<string, unknown>): Record<string, unknown> {
   const result: Record<string, unknown> = {}
   for (const [k, v] of Object.entries(obj)) {
-    if (v !== undefined) result[k] = v
+    if (v === undefined) continue
+    if (v !== null && typeof v === 'object' && !Array.isArray(v)) {
+      result[k] = stripUndefined(v as Record<string, unknown>)
+    } else {
+      result[k] = v
+    }
   }
   return result
 }
