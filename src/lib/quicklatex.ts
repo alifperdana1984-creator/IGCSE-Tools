@@ -15,8 +15,9 @@ function sanitize(code: string): string {
   // Strip markdown code fences
   const fenced = code.match(/```(?:latex|tex)?\s*([\s\S]*?)```/i)
   if (fenced) code = fenced[1]
-  // Fix literal \n sequences from JSON serialization
-  code = code.replace(/\\n/g, '\n')
+  // Fix literal \n sequences from JSON serialization — only when not part of a LaTeX command
+  // Match \n only when followed by whitespace, digit, or end-of-string (not a letter like \node, \normalsize)
+  code = code.replace(/\\n(?=[^a-zA-Z]|$)/g, '\n')
   return code.trim()
 }
 
