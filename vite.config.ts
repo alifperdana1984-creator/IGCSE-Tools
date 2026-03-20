@@ -6,6 +6,7 @@ import type { Plugin } from 'vite';
 
 const DEV_PREAMBLE = [
   '\\usepackage{tikz}',
+  '\\usepackage{amsmath}',
   '\\usetikzlibrary{arrows.meta,calc,patterns,positioning}',
 ].join('\n')
 
@@ -60,6 +61,8 @@ function latexDevProxy(): Plugin {
             const urlLine = lines.find((l: string) => l.startsWith('http'))
             if (!urlLine) { res.writeHead(502); res.end(`QuickLaTeX no URL: ${text}`); return }
             const imageUrl = urlLine.split(/\s+/)[0]
+            const statusLine = lines[0]
+            if (statusLine === '1') { res.writeHead(502); res.end(`QuickLaTeX error: ${lines.slice(1).join(' ')}`); return }
             if (imageUrl.includes('/error.png')) { res.writeHead(502); res.end(`QuickLaTeX render error: ${text.slice(0, 200)}`); return }
 
             const imgRes = await fetch(imageUrl)

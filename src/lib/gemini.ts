@@ -1244,9 +1244,10 @@ STRICT REQUIREMENTS — follow exactly:
     const fencedMatch = text?.match(/```(?:latex|tex)?\s*([\s\S]*?)```/i);
     const clean = fencedMatch ? fencedMatch[1].trim() : text?.replace(/^```(latex|tex)?/i, "").replace(/```$/, "").trim();
 
+    onLog?.(`[TikZ] generated ${clean?.length ?? 0} chars`);
     return clean || null;
   } catch (err) {
-    onLog?.(`TikZ generation error: ${err}`);
+    onLog?.(`[TikZ] generation error: ${err}`);
     return null;
   }
 }

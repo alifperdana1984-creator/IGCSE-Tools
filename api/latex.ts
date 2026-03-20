@@ -1,12 +1,13 @@
 /**
  * Vercel Edge Function — QuickLaTeX proxy.
  * Accepts POST { code: string } — tikzpicture block or full standalone document.
- * Extracts the tikzpicture block and sends it as formula with preamble.
+ * Extracts the tikzpicture block and sends it as formula+preamble to QuickLaTeX.
  */
 export const config = { runtime: 'edge' }
 
-const DEFAULT_PREAMBLE = [
+const BASE_PREAMBLE = [
   '\\usepackage{tikz}',
+  '\\usepackage{amsmath}',
   '\\usetikzlibrary{arrows.meta,calc,patterns,positioning}',
 ].join('\n')
 
@@ -15,7 +16,7 @@ function extractTikzBlock(code: string): { formula: string; extraLibs: string } 
   const blockMatch = code.match(/\\begin\{tikzpicture\}[\s\S]*?\\end\{tikzpicture\}/)
   const formula = blockMatch ? blockMatch[0] : code
 
-  // Extract any \usetikzlibrary calls from outside the block
+  // Collect all \usetikzlibrary calls from anywhere in the document
   const libMatches = [...code.matchAll(/\\usetikzlibrary\{([^}]+)\}/g)]
   const libs = [...new Set(
     libMatches.flatMap(m => m[1].split(',').map((s: string) => s.trim()).filter(Boolean))
@@ -46,8 +47,8 @@ export default async function handler(req: Request): Promise<Response> {
 
   const { formula, extraLibs } = extractTikzBlock(code)
   const preamble = extraLibs
-    ? `${DEFAULT_PREAMBLE}\n\\usetikzlibrary{${extraLibs}}`
-    : DEFAULT_PREAMBLE
+    ? `${BASE_PREAMBLE}\n\\usetikzlibrary{${extraLibs}}`
+    : BASE_PREAMBLE
 
   const params = [
     `formula=${encodeURIComponent(formula)}`,
@@ -68,16 +69,25 @@ export default async function handler(req: Request): Promise<Response> {
 
   const text = await qlRes.text()
   const lines = text.split('\n').map((l: string) => l.trim()).filter(Boolean)
-  const urlLine = lines.find((l: string) => l.startsWith('http'))
 
+  // QuickLaTeX response format:
+  //   Success: "0\n<url> <w> <h>\n"
+  //   Error:   "1\n<error message>\n"
+  const statusLine = lines[0]
+  if (statusLine === '1') {
+    const errMsg = lines.slice(1).join(' ').trim()
+    return new Response(`QuickLaTeX error: ${errMsg || 'unknown error'}`, { status: 502 })
+  }
+
+  const urlLine = lines.find((l: string) => l.startsWith('http'))
   if (!urlLine) {
-    return new Response(`QuickLaTeX no URL. Response: ${text.slice(0, 300)}`, { status: 502 })
+    return new Response(`QuickLaTeX unexpected response: ${text.slice(0, 300)}`, { status: 502 })
   }
 
   const imageUrl = urlLine.split(/\s+/)[0]
   if (imageUrl.includes('/error.png')) {
     const errMsg = lines.filter((l: string) => !l.startsWith('http') && !/^\d/.test(l)).join(' ')
-    return new Response(`QuickLaTeX render error: ${errMsg || text.slice(0, 200)}`, { status: 502 })
+    return new Response(`QuickLaTeX render error: ${errMsg || 'unknown'}`, { status: 502 })
   }
 
   const imgRes = await fetch(imageUrl)
