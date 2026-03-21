@@ -9,6 +9,7 @@ import type {
 } from "../lib/types";
 import type { AIProvider } from "../lib/providers";
 import type { NotifyFn } from "./useNotifications";
+import type { PastPaperItem } from "../lib/ai";
 import {
   generateTest,
   getStudentFeedback as aiFeedback,
@@ -194,6 +195,7 @@ async function buildReferences(
                   resourceType: "past_paper",
                   name: r.name,
                   pastPaperText,
+                  pastPaperItems: (cache.items ?? []) as PastPaperItem[],
                 };
               }
             }
@@ -260,6 +262,7 @@ async function buildReferences(
                 resourceType: "past_paper",
                 name: r.name,
                 pastPaperText,
+                pastPaperItems: (cache.items ?? []) as PastPaperItem[],
               };
             }
           }

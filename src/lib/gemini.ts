@@ -7,7 +7,7 @@ import type {
   GeminiError,
   TikzSpec,
 } from "./types";
-import type { Reference } from "./ai";
+import type { Reference, PastPaperItem } from "./ai";
 import type { UsageCallback } from "./ai";
 import {
   sanitizeQuestion,
@@ -775,6 +775,61 @@ export async function generateTest(
           ? "structured"
           : "mixed";
 
+  // ── Collect all past paper items from references ─────────────────────────
+  const allPastPaperItems: PastPaperItem[] = (config.references ?? [])
+    .filter((r) => r.resourceType === "past_paper" && r.pastPaperItems?.length)
+    .flatMap((r) => r.pastPaperItems!);
+
+  /**
+   * Score a past paper item against a slot topic.
+   * Returns 0 if no match, higher = better match.
+   */
+  function scoreItemForTopic(item: PastPaperItem, slotTopic: string): number {
+    const norm = slotTopic.toLowerCase().trim();
+    const keywords = norm.split(/[\s,/]+/).filter((k) => k.length > 2);
+    const topicLower = (item.topic ?? "").toLowerCase();
+    const tagsLower = (item.tags ?? []).map((t) => t.toLowerCase());
+    const questionLower = item.questionText.toLowerCase();
+    let score = 0;
+    if (topicLower === norm) score += 8;
+    else if (topicLower.includes(norm)) score += 4;
+    else if (keywords.some((k) => topicLower.includes(k))) score += 2;
+    if (tagsLower.some((t) => t === norm)) score += 4;
+    score += keywords.filter((k) => tagsLower.some((t) => t.includes(k))).length;
+    score += keywords.filter((k) => questionLower.includes(k)).length * 0.5;
+    return score;
+  }
+
+  /**
+   * Build a compact template block for one slot.
+   * Picks the best-matching past paper item (score > 0).
+   */
+  function buildSlotTemplate(slotTopic: string, hasDiagram: boolean): string {
+    if (allPastPaperItems.length === 0) return "";
+    const scored = allPastPaperItems
+      .map((item) => ({ item, score: scoreItemForTopic(item, slotTopic) }))
+      .filter(({ score }) => score > 0)
+      .sort((a, b) => b.score - a.score);
+    // Prefer diagram items for diagram slots, non-diagram for others
+    const preferred = hasDiagram
+      ? scored.find(({ item }) => !!item.tikzCode) ?? scored[0]
+      : scored.find(({ item }) => !item.tikzCode) ?? scored[0];
+    if (!preferred) return "";
+    const { item } = preferred;
+    const lines: string[] = [
+      `TEMPLATE (use this past paper question as the structural model):`,
+      `Question: ${item.questionText}`,
+      `Mark Scheme: ${item.markScheme}`,
+    ];
+    if (item.tikzCode) {
+      lines.push(`Reference Diagram (TikZ — reuse structure, change values only):\n\`\`\`tikz\n${item.tikzCode}\n\`\`\``);
+    }
+    lines.push(
+      `INSTRUCTION: Mirror this question's structure exactly — same number of sub-parts, same command word, same mark total (${item.marks} marks). Change ONLY: numbers, measurements, context, variable names. Do NOT copy the question verbatim.`,
+    );
+    return lines.join("\n");
+  }
+
   // ── Phase 1: Plan question slots (lightweight — no diagram data yet) ──────
 
   onLog?.("Phase 1: planning question slots…");
@@ -951,8 +1006,11 @@ ASSESSMENT OBJECTIVES:
     if (tikzSlots.length === 0) return [];
 
     const slotDescriptions = tikzSlots
-      .map((s) => `Q${s.index + 1}: topic="${s.topic}", type="${s.questionType}"`)
-      .join("\n");
+      .map((s) => {
+        const template = buildSlotTemplate(s.topic, true);
+        return `Q${s.index + 1}: topic="${s.topic}", type="${s.questionType}"${template ? `\n${template}` : ""}`;
+      })
+      .join("\n\n");
 
     const prompt = `You are a Cambridge IGCSE ${config.subject} examiner AND a LaTeX/TikZ expert.
 
@@ -963,13 +1021,13 @@ CONFIGURATION:
 - Calculator: ${config.calculator ? "Allowed" : "Not Allowed"}
 ${config.syllabusContext ? `- Syllabus focus: ${config.syllabusContext}` : ""}
 
-QUESTION SLOTS:
+QUESTION SLOTS (each slot may include a TEMPLATE from a real past paper):
 ${slotDescriptions}
 
 QUESTION REQUIREMENTS (each question):
+- If a TEMPLATE is provided for the slot, mirror its structure exactly (sub-parts, command word, mark total). Change only numbers, measurements, context.
+- If no TEMPLATE, create an original Cambridge-style question.
 - Must require the diagram to solve
-- Cambridge command word appropriate for difficulty
-- Multi-step reasoning (≥ 2 steps)
 - LaTeX: all math in $...$
 - MCQ: 4 options array, answer = "A"/"B"/"C"/"D"
 
@@ -981,12 +1039,10 @@ TIKZ REQUIREMENTS (each diagram):
 - Right angles: small square marker
 - Available libraries: calc, arrows.meta, angles, quotes, patterns, positioning
 - Diagram must match question exactly (same letters, values, geometry)
+- If a Reference Diagram (TikZ) is provided in the slot TEMPLATE, reuse its structure — change only numeric values and labels.
 - CRITICAL: every { must have a matching } — count your braces before outputting
 - CRITICAL: every \\begin{...} must have a matching \\end{...}
 - CRITICAL: every command must end with a semicolon
-
-REFERENCE DIAGRAM RULE:
-If a past paper example above includes a "Reference Diagram (TikZ)" block, you MUST use that TikZ as the structural base for your diagram. Keep the geometry, line directions, arrow styles, and label positions identical. Only change the numeric values, variable names, and angle labels to match your new question. Do NOT redraw the diagram from scratch.
 
 MARK SCHEME: Cambridge notation (B1, M1, A1).`;
 
@@ -1034,8 +1090,11 @@ MARK SCHEME: Cambridge notation (B1, M1, A1).`;
     if (batchSlots.length === 0) return [];
 
     const batchDescriptions = batchSlots
-      .map((s) => `Q${s.index + 1}: topic="${s.topic}", type="${s.questionType}"`)
-      .join("\n");
+      .map((s) => {
+        const template = buildSlotTemplate(s.topic, false);
+        return `Q${s.index + 1}: topic="${s.topic}", type="${s.questionType}"${template ? `\n${template}` : ""}`;
+      })
+      .join("\n\n");
 
     const prompt = `Generate a Cambridge IGCSE ${config.subject} assessment.
 
@@ -1051,8 +1110,8 @@ QUESTION SLOTS (write EXACTLY ${batchSlots.length} questions in this order):
 ${batchDescriptions}
 
 RULES:
-1. Multi-step reasoning required (≥ 2 steps).
-2. Avoid textbook phrasing. Use Cambridge command words.
+1. If a slot has a TEMPLATE, mirror its structure exactly (same sub-parts, command word, mark total). Change only numbers, measurements, and context. Do NOT copy verbatim.
+2. If no TEMPLATE, write an original Cambridge-style question.
 3. MCQ: 4 options (no letter prefix); answer = "A"/"B"/"C"/"D".
 4. Short answer: 1–3 marks, no sub-parts.
 5. Structured: stem + (a),(b),(c) sub-parts with [n] marks each.

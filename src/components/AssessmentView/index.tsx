@@ -508,7 +508,7 @@ export function AssessmentView({
         </span>
       </div>
 
-      <div className="flex-1 overflow-y-auto" ref={contentRef}>
+      <div className="flex-1 min-h-0 overflow-y-auto" ref={contentRef}>
       <div className="p-4 markdown-body">
         {analysisText && (
           <div className="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-lg text-sm text-blue-800">

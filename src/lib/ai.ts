@@ -24,6 +24,19 @@ import {
   analyzeFile as anthropicAnalyzeFile,
 } from './anthropic-provider'
 
+export type PastPaperItem = {
+  questionText: string
+  commandWord: string
+  marks: number
+  markScheme: string
+  questionType?: string
+  difficultyBand?: string
+  topic?: string
+  tags?: string[]
+  assessmentObjective?: string
+  tikzCode?: string
+}
+
 export type Reference = {
   data: string
   mimeType: string
@@ -33,6 +46,7 @@ export type Reference = {
   geminiFileUploadedAt?: number
   syllabusText?: string
   pastPaperText?: string
+  pastPaperItems?: PastPaperItem[]
 }
 
 type WithExtra = GenerationConfig & {
