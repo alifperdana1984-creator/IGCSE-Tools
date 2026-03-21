@@ -35,13 +35,20 @@ interface Props {
   onRepairQuestion?: (question: QuestionItem) => Promise<Partial<QuestionItem> | null>
 }
 
+function normalizeNewlines(text: string): string {
+  // Convert single \n to markdown hard break (two trailing spaces + \n)
+  // so that line breaks typed in the editor are preserved in the rendered output.
+  // Avoid doubling already-doubled newlines (paragraph breaks stay as-is).
+  return text.replace(/([^\n])\n(?!\n)/g, '$1  \n')
+}
+
 function QuestionMarkdown({ content }: { content: string }) {
   return (
     <ReactMarkdown
       remarkPlugins={[remarkMath, remarkGfm]}
       rehypePlugins={[rehypeKatex]}
     >
-      {preprocessLatex(content)}
+      {normalizeNewlines(preprocessLatex(content))}
     </ReactMarkdown>
   )
 }

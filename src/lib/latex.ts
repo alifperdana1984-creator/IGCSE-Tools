@@ -25,6 +25,20 @@ export function preprocessLatex(text: string): string {
   // produced by some model outputs; this avoids KaTeX parse errors.
   result = result.replace(/(\\[A-Za-z]+)\s*\$\$\s*(\\[A-Za-z]+)/g, '$1 $2')
 
+  // Step 0.5a: fix known broken patterns where models emit $$ instead of $
+  //   "$value \text{ unit}$$" → "$value \text{unit}$"
+  //   "$value^\circ$$"        → "$value^\circ$"
+  //   "value^\circ$$"         → "$value^\circ$"  (missing opening $)
+  //   "value \text{unit}$$"   → "$value \text{unit}$"
+  // Fix 1: $...$$ → $..$  (opening $ exists, closing doubled)
+  result = result.replace(/(\$[^$\n]+?)\$\$/g, '$1$')
+  // Fix 2: bare "digits\x5ecirc$$" (^\circ$$) or "digits \text{unit}$$" — wrap + strip double $
+  // Note: in TS source \\x5c = one backslash in the regex pattern
+  result = result.replace(/(\d[\d.]*\x5e\x5ccirc)\$\$/g, '$$$1$')
+  result = result.replace(/(\d[\d.]*\s*\x5ctext\{[^}]*\})\$\$/g, '$$$1$')
+  // Fix 3: any remaining $$ that immediately follow a } (closing a \text or similar)
+  result = result.replace(/\}\$\$(?=[^$])/g, '}$')
+
   // Step 0.6: fix common model LaTeX typos before POWER_RE runs
   // ^{circ} without backslash → ^{\circ}  (model drops the backslash)
   result = result.replace(/\^\{circ\}/g, '^{\\circ}')
