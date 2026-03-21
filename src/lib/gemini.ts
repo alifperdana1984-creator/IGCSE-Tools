@@ -1312,13 +1312,18 @@ GEOMETRIC ACCURACY (verify before outputting):
 - For parallel line diagrams: alternate interior angles are EQUAL; co-interior angles sum to 180°. Draw arcs on the correct side of the transversal.
 - For triangles: angles at each vertex must visually match the stated values. A right angle must use a square marker, not an arc.
 - Arc sweep direction: use the SMALLER angle between the two rays unless the question explicitly asks for the reflex angle.
-- Double-check: read the question answer, then verify your arc sweeps match those exact angle values geometrically.`;
+- Double-check: read the question answer, then verify your arc sweeps match those exact angle values geometrically.
+
+KEEP IT SIMPLE:
+- Use hardcoded numeric coordinates — do NOT use \\pgfmathsetmacro or \\pgfmathparse for coordinate calculations. Compute values yourself and write them as literals (e.g. "at (1.46, 3)" not "at (\\xS, 3)").
+- Maximum 25 lines inside tikzpicture. Omit comments. No \\def or \\newcommand.
+- Simple is more reliable: fewer commands = fewer compile errors.`;
 
   try {
     const response = await ai.models.generateContent({
       model,
       contents: [{ role: "user", parts: [{ text: prompt }] }],
-      config: { temperature: 0.2, maxOutputTokens: 8192 },
+      config: { temperature: 0.2, maxOutputTokens: 16384 },
     });
     const text = response.text?.trim();
     // Try to extract fenced code block first to handle preamble text like "Here is the code:"
