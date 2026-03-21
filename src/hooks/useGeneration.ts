@@ -53,25 +53,38 @@ function formatPastPaperText(
   topicFilter?: string,
 ): string {
   if (cache.items && cache.items.length > 0) {
-    // If a topic is provided, prioritize items that match the topic or tags
     let items = cache.items;
     if (topicFilter) {
       const normalizedTopic = topicFilter.toLowerCase().trim();
-      items = [...cache.items].sort((a, b) => {
-        const aMatch =
-          a.topic?.toLowerCase().includes(normalizedTopic) ||
-          a.tags?.some((t) => t.toLowerCase().includes(normalizedTopic))
-            ? 1
-            : 0;
-        const bMatch =
-          b.topic?.toLowerCase().includes(normalizedTopic) ||
-          b.tags?.some((t) => t.toLowerCase().includes(normalizedTopic))
-            ? 1
-            : 0;
-        return bMatch - aMatch; // Higher match score first
-      });
-      // Optional: Take only top X relevant examples if list is huge
-      items = items.slice(0, 10);
+      // Split into individual keywords for partial matching
+      const keywords = normalizedTopic.split(/[\s,/]+/).filter((k) => k.length > 2);
+
+      function scoreItem(item: typeof items[0]): number {
+        const topicLower = (item.topic ?? "").toLowerCase();
+        const tagsLower = (item.tags ?? []).map((t) => t.toLowerCase());
+        const questionLower = item.questionText.toLowerCase();
+        let score = 0;
+        // Exact topic match — highest weight
+        if (topicLower === normalizedTopic) score += 8;
+        // Topic contains full filter string
+        else if (topicLower.includes(normalizedTopic)) score += 4;
+        // Any keyword hits topic
+        else if (keywords.some((k) => topicLower.includes(k))) score += 2;
+        // Tag exact match
+        if (tagsLower.some((t) => t === normalizedTopic)) score += 4;
+        // Tag partial match per keyword
+        score += keywords.filter((k) => tagsLower.some((t) => t.includes(k))).length;
+        // Question text contains keywords (weakest signal)
+        score += keywords.filter((k) => questionLower.includes(k)).length * 0.5;
+        return score;
+      }
+
+      items = [...cache.items]
+        .map((item) => ({ item, score: scoreItem(item) }))
+        .sort((a, b) => b.score - a.score)
+        .map(({ item }) => item);
+      // Keep top 8 most relevant — enough context without token bloat
+      items = items.slice(0, 8);
     }
 
     const lines = items

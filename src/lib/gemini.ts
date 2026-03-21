@@ -985,6 +985,9 @@ TIKZ REQUIREMENTS (each diagram):
 - CRITICAL: every \\begin{...} must have a matching \\end{...}
 - CRITICAL: every command must end with a semicolon
 
+REFERENCE DIAGRAM RULE:
+If a past paper example above includes a "Reference Diagram (TikZ)" block, you MUST use that TikZ as the structural base for your diagram. Keep the geometry, line directions, arrow styles, and label positions identical. Only change the numeric values, variable names, and angle labels to match your new question. Do NOT redraw the diagram from scratch.
+
 MARK SCHEME: Cambridge notation (B1, M1, A1).`;
 
     return withRetry(async () => {

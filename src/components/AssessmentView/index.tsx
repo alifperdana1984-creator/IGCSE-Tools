@@ -377,6 +377,21 @@ export function AssessmentView({
     })
   }
 
+  const handleRepairQuestion = async (q: QuestionItem) => {
+    if (!onRepairQuestion || !onUpdateQuestion) return
+    setRepairingTextIds(prev => new Set(prev).add(q.id))
+    try {
+      const updates = await onRepairQuestion(q)
+      if (updates) onUpdateQuestion(q.id, updates)
+    } finally {
+      setRepairingTextIds(prev => {
+        const next = new Set(prev)
+        next.delete(q.id)
+        return next
+      })
+    }
+  }
+
   const handleRegenerateAllMissing = async () => {
     if (!missingDiagramQuestions.length) return
     if (onRegenerateDiagrams) {
@@ -660,6 +675,19 @@ export function AssessmentView({
                     )}
                     <DiagramRenderer spec={q.diagram} />
                     <QuestionMarkdown content={q.text} />
+                    {onRepairQuestion && onUpdateQuestion && !studentMode && (
+                      <div className="mt-1 flex justify-end">
+                        <button
+                          onClick={() => { void handleRepairQuestion(q) }}
+                          disabled={repairingTextIds.has(q.id)}
+                          className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs bg-stone-100 text-stone-500 hover:bg-stone-200 hover:text-stone-700 disabled:opacity-60"
+                          title="Fix LaTeX formatting, wording, and mark scheme errors"
+                        >
+                          <RefreshCw className={`w-3 h-3 ${repairingTextIds.has(q.id) ? 'animate-spin' : ''}`} />
+                          {repairingTextIds.has(q.id) ? 'Improving…' : 'Improve Question'}
+                        </button>
+                      </div>
+                    )}
                     {studentMode && (
                       <textarea
                         placeholder="Your answer..."

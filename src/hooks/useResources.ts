@@ -268,8 +268,9 @@ Be thorough — include every numbered objective. Do not skip any.`,
         const existing = await getPastPaperCache(resource.id);
         if (
           existing &&
-          ((existing.items && existing.items.length >= 10) ||
-            (existing.examples && existing.examples.length > 100))
+          existing.version === 3 &&
+          existing.items &&
+          existing.items.length >= 10
         )
           return;
       } catch {
@@ -402,7 +403,7 @@ Extract as many items as possible — aim for complete coverage of the paper, no
           await savePastPaperCache(resource.id, resource.subject, {
             items,
             summary: parsed.summary?.trim() || undefined,
-            version: 2,
+            version: 3,
           });
           notify(
             `Past paper "${resource.name}" processed � ${items.length} structured examples cached`,

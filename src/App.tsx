@@ -18,7 +18,7 @@ import { Library as LibraryView } from './components/Library'
 import { Notifications } from './components/Notifications'
 import { copyToClipboard } from './lib/clipboard'
 import { repairQuestionItem } from './lib/sanitize'
-import { regenerateDiagramsForQuestions } from './lib/gemini'
+import { regenerateDiagramsForQuestions, repairQuestionText } from './lib/gemini'
 
 const DEFAULT_CONFIG: GenerationConfig = {
   provider: 'gemini',
@@ -411,6 +411,33 @@ export default function App() {
     }
   }, [currentApiKey, generation, notify, customModel, config.model])
 
+  const handleRepairQuestion = useCallback(async (question: QuestionItem) => {
+    const geminiKey = apiKeys['gemini']
+    if (!geminiKey) {
+      notify('Question improvement requires a Gemini API key.', 'error')
+      setApiSettingsOpen(true)
+      return null
+    }
+    const assessment = generation.generatedAssessment
+    if (!assessment) return null
+    try {
+      const updates = await repairQuestionText(
+        question,
+        assessment.subject,
+        customModel.trim() || DEFAULT_MODELS['gemini'],
+        geminiKey,
+      )
+      if (!updates) {
+        notify('No issues found to fix.', 'success')
+        return null
+      }
+      return updates
+    } catch (e: any) {
+      notify(e?.message || 'Failed to improve question.', 'error')
+      return null
+    }
+  }, [apiKeys, generation, notify, customModel])
+
   const handleDeleteAccount = useCallback(async () => {
     setIsDeleting(true)
     try {
@@ -636,6 +663,7 @@ export default function App() {
             onAddQuestions={handleAddQuestionsToCurrentAssessment}
             onUpdateQuestion={handleUpdateQuestion}
             onRegenerateDiagrams={handleRegenerateDiagrams}
+            onRepairQuestion={handleRepairQuestion}
           />
           </div>
         )}
