@@ -1047,6 +1047,13 @@ TIKZ REQUIREMENTS (each diagram):
 - CRITICAL: every \\begin{...} must have a matching \\end{...}
 - CRITICAL: every command must end with a semicolon
 
+GEOMETRIC ACCURACY (verify before outputting):
+- Angle arcs MUST visually match the stated value: 70° arc sweeps exactly 70° (acute, not obtuse). Acute < 90°, obtuse 90°–180°.
+- Arc sweep must use the SMALLER angle between two rays unless reflex is explicitly stated.
+- Parallel lines: alternate angles are equal — draw arcs on opposite sides of transversal. Co-interior angles sum to 180°.
+- Right angles: use square marker, never an arc.
+- Read your own question answer and verify each arc in your TikZ matches those exact values.
+
 MARK SCHEME: Cambridge notation (B1, M1, A1).`;
 
     return withRetry(async () => {
@@ -1264,13 +1271,15 @@ async function generateTikzCode(
 ): Promise<string | null> {
   const improvementBlock = previousCode
     ? `
-PREVIOUS VERSION (improve this diagram):
+PREVIOUS VERSION (proofread and fix this diagram):
 ${previousCode}
 
-IMPROVE BY:
-- Fix any incorrect coordinates or proportions
-- Add missing labels, angle marks, or tick marks
-- Keep total line count inside tikzpicture ≤ 25
+PROOFREAD FOR:
+- Geometric accuracy: do the angle arcs match the values stated in the question? e.g. if the question says 70°, the arc must sweep exactly 70° (acute). If an arc looks obtuse but should be acute, fix the start/end angles.
+- Parallel line diagrams: are arcs on the correct side of the transversal for the angle type (alternate/co-interior/corresponding)?
+- Right angles: should use a square marker, not an arc.
+- Missing labels, incorrect coordinates, or proportions that don't match the question.
+- Keep total line count inside tikzpicture ≤ 30.
 `
     : "";
 
@@ -1296,7 +1305,14 @@ STRICT REQUIREMENTS — follow exactly:
 6. CRITICAL: every { must have a matching } — unmatched braces cause a compile error.
 7. CRITICAL: every \\begin{...} must have a matching \\end{...}.
 8. You MUST output the complete block ending with \\end{tikzpicture} — never truncate.
-9. If no diagram is needed, output nothing (empty string).`;
+9. If no diagram is needed, output nothing (empty string).
+
+GEOMETRIC ACCURACY (verify before outputting):
+- Angle arcs MUST visually match the stated angle value: a 70° arc must sweep exactly 70°, not 110° or 180°. Acute angles (< 90°) must look acute; obtuse angles (90°–180°) must look obtuse.
+- For parallel line diagrams: alternate interior angles are EQUAL; co-interior angles sum to 180°. Draw arcs on the correct side of the transversal.
+- For triangles: angles at each vertex must visually match the stated values. A right angle must use a square marker, not an arc.
+- Arc sweep direction: use the SMALLER angle between the two rays unless the question explicitly asks for the reflex angle.
+- Double-check: read the question answer, then verify your arc sweeps match those exact angle values geometrically.`;
 
   try {
     const response = await ai.models.generateContent({
