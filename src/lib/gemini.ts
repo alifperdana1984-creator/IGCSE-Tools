@@ -1041,6 +1041,8 @@ TIKZ REQUIREMENTS (each diagram):
 - Use \\coordinate for named points, calc interpolation $(A)!0.5!(B)$ is allowed
 - Angle arcs: use the 'angles' library with \\pic syntax. Use "angle radius" and "angle eccentricity" (SPACE, NOT underscore).
 - \\pic SYNTAX — CRITICAL: \\pic["label", draw, angle radius=0.8cm] {angle = A--B--C} where A, B, C are ALL \\coordinate names. NEVER use calc expressions like $(R)+(1,0)$ inside \\pic args — this crashes pdflatex. Define a helper coord instead: \\coordinate (Rright) at ($(R)+(1,0)$); then \\pic{angle = Rright--R--S}.
+- REFLEX ANGLES (>180°): do NOT use \\pic. Draw arc manually: \\draw ($(B)+(0.9,0)$) arc[start angle=0, end angle=-295, radius=0.9cm] node[pos=0.5, right] {$295^\\circ$};
+- NEVER use angle options={reflex} — this key does not exist and will crash pdflatex.
 - Right angles: small square marker (\\draw (0.2,0) -- (0.2,0.2) -- (0,0.2);)
 - NO % comment lines — omit all comments from the TikZ code
 - Available libraries: calc, arrows.meta, angles, quotes, patterns, positioning
@@ -1401,9 +1403,14 @@ KEEP IT SIMPLE:
 \\pic ANGLE SYNTAX — CRITICAL:
 - \\pic requires THREE named \\coordinate names: \\pic["label", draw, ...] {angle = A--B--C}
 - NEVER use calc expressions inside \\pic args: \\pic{angle = $(R)+(1,0)$--R--S} is INVALID and will crash.
+- NEVER use angle options={reflex} — this key does not exist and will crash pdflatex.
 - To mark an angle relative to a horizontal direction, define a helper coord first:
   \\coordinate (Rright) at ($(R)+(1,0)$);
-  \\pic["$70^\\circ$", draw, angle radius=0.8cm] {angle = Rright--R--S};`;
+  \\pic["$70^\\circ$", draw, angle radius=0.8cm] {angle = Rright--R--S};
+- For REFLEX angles (>180°): do NOT use \\pic. Instead draw an arc manually:
+  \\draw[->] (B) ++(startAngle:radius) arc[start angle=startAngle, end angle=endAngle, radius=radius] node[midway, label] {};
+  Example for 295° reflex at B from 0° sweeping 295° clockwise (i.e. -295°):
+  \\draw ($(B)+(0.9,0)$) arc[start angle=0, end angle=-295, radius=0.9cm] node[pos=0.5, right] {$295^\\circ$};`;
 
   try {
     const response = await ai.models.generateContent({
