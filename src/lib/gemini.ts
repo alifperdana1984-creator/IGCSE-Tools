@@ -1035,7 +1035,7 @@ TIKZ REQUIREMENTS (each diagram):
 - Write ONLY the \\begin{tikzpicture}...\\end{tikzpicture} block — NO \\documentclass, NO \\usepackage, NO \\begin{document}
 - Cambridge exam style: thick lines, filled dots at vertices, clear labels
 - Use \\coordinate for named points, calc interpolation $(A)!0.5!(B)$ is allowed
-- Angle arcs: use the 'angles' library with \\pic or \\draw arc syntax
+- Angle arcs: use the 'angles' library with \\pic syntax. CRITICAL: use "angle radius" and "angle eccentricity" (with a SPACE, NOT underscore) e.g. pic["$70^\\circ$", draw, angle radius=0.7cm, angle eccentricity=1.3]
 - Right angles: small square marker
 - Available libraries: calc, arrows.meta, angles, quotes, patterns, positioning
 - Diagram must match question exactly (same letters, values, geometry)
