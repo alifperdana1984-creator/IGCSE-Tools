@@ -656,6 +656,9 @@ COMMON ISSUES TO FIX:
 - Inconsistent notation (e.g. mix of $x$ and x)
 - MCQ option lines that start with "A)" but contain raw LaTeX artifacts
 - Mark scheme lines with broken math formatting
+- Currency/price dollar signs misread as LaTeX math: e.g. "AB = $4.415\ncm.Triangle DEF..." → the "$4.415" is a price, not math. Fix: "AB = 4.415 cm. Triangle DEF..."
+- Sentences running together without spaces or line breaks — add proper spacing and newlines
+- Text that has been accidentally italicised or formatted as math — restore to plain text
 
 QUESTION TEXT:
 ${question.text}

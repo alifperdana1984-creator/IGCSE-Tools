@@ -19,7 +19,9 @@ export function preprocessLatex(text: string): string {
   // NOT escaped (preserved as math):
   //   • $3x^2$  — next non-unit char is ^ or _ → math operator context
   //   • $\frac  — backslash after $ → clearly LaTeX
-  let result = text.replace(/\$(\d[\d,.]*(?:[a-zA-Z]{1,4})?)(?=\s+[a-zA-Z]{3,}|[,.)!?\n]|\s*$)/gm, (_, digits) => `&#36;${digits}`)
+  // Also escape $NUMBER directly followed by a newline, period+letter (sentence continues),
+  // or end of string — catches "$4.415\ncm.Triangle..." style broken splits.
+  let result = text.replace(/\$(\d[\d,.]*(?:[a-zA-Z]{1,4})?)(?=\s+[a-zA-Z]{3,}|[,.)!?\n]|\s*$|\s*[a-zA-Z])/gm, (_, digits) => `&#36;${digits}`)
 
   // Step 0.5: repair malformed inline sequences like \alpha$$\beta
   // produced by some model outputs; this avoids KaTeX parse errors.
