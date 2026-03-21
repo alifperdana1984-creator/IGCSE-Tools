@@ -47,6 +47,7 @@ function formatPastPaperText(
       topic?: string;
       tags?: string[];
       assessmentObjective?: string;
+      tikzCode?: string;
     }>;
   },
   topicFilter?: string,
@@ -83,7 +84,8 @@ function formatPastPaperText(
           `${item.difficultyBand ? ` | Difficulty: ${item.difficultyBand}` : ""}` +
           `${item.assessmentObjective ? ` | ${item.assessmentObjective}` : ""}` +
           `\n${item.topic ? `Topic: ${item.topic}\n` : ""}` +
-          `Mark Scheme:\n${item.markScheme}`,
+          `Mark Scheme:\n${item.markScheme}` +
+          (item.tikzCode ? `\nReference Diagram (TikZ):\n\`\`\`tikz\n${item.tikzCode}\n\`\`\`` : ""),
       )
       .join("\n\n");
     return cache.summary?.trim()

@@ -306,7 +306,9 @@ EXTRACTION RULES:
    - topic: the syllabus topic this question covers
    - tags: list of 3-5 keywords relevant to the question content (e.g. "algebra", "quadratic", "graph")
    - assessmentObjective: "AO1" (knowledge/recall), "AO2" (application/problem-solving), or "AO3" (experimental/practical)
-5. VISUALS: If a question refers to a diagram, graph, or table, include a BRACKETED DESCRIPTION at the start of 'questionText' (e.g. "[Diagram showing a filtration apparatus] (a) Label the part..."). This is critical for context.
+5. VISUALS: If a question refers to a diagram, graph, or table:
+   - Include a BRACKETED DESCRIPTION at the start of 'questionText' (e.g. "[Diagram: two parallel lines cut by a transversal] (a) Find the value of x."). This is critical for context.
+   - If the diagram is geometric (lines, angles, triangles, circles, coordinates), reproduce it as a TikZ tikzpicture block in 'tikzCode'. Write ONLY the \begin{tikzpicture}...\end{tikzpicture} block — no \documentclass wrapper. Available libraries: calc, arrows.meta, angles, quotes, patterns, positioning. If the diagram is a photo, biological drawing, or non-geometric, omit tikzCode.
 6. summary: include the paper type (e.g. "Paper 1 MCQ", "Paper 2 Structured"), approximate number of questions, mark range distribution, and dominant question types.
 
 Extract as many items as possible — aim for complete coverage of the paper, not a sample.`,
@@ -341,6 +343,10 @@ Extract as many items as possible — aim for complete coverage of the paper, no
                           type: Type.STRING,
                           nullable: true,
                         },
+                        tikzCode: {
+                          type: Type.STRING,
+                          nullable: true,
+                        },
                       },
                       required: ["questionText", "markScheme"],
                     },
@@ -365,6 +371,7 @@ Extract as many items as possible — aim for complete coverage of the paper, no
             topic?: string;
             tags?: string[];
             assessmentObjective?: string;
+            tikzCode?: string;
           }>;
         };
         const items = (parsed.items ?? [])
@@ -389,6 +396,7 @@ Extract as many items as possible — aim for complete coverage of the paper, no
             ...(x.assessmentObjective
               ? { assessmentObjective: String(x.assessmentObjective).trim() }
               : {}),
+            ...(x.tikzCode ? { tikzCode: String(x.tikzCode).trim() } : {}),
           }));
         if (items.length >= 5) {
           await savePastPaperCache(resource.id, resource.subject, {

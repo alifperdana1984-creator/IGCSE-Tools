@@ -160,5 +160,6 @@ export interface PastPaperCache {
     difficultyBand?: string;
     topic?: string;
     assessmentObjective?: string;
+    tikzCode?: string;
   }>;
 }
